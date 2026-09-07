@@ -6,7 +6,7 @@ A ticket management system that uses AI to classify, respond to, and route suppo
 
 ## Tech Stack
 
-- **Frontend**: React + TypeScript + Vite (port 5173) + shadcn/ui
+- **Frontend**: React + TypeScript + Vite (port 5173) + Tailwind v4 + shadcn/ui (Base UI primitives)
 - **Backend**: Express + TypeScript + Bun (port 3000)
 - **Database**: PostgreSQL with Prisma ORM
 - **AI**: OpenAI GPT-5 Nano via Vercel AI SDK (`@ai-sdk/openai`)
@@ -39,7 +39,8 @@ The client proxies `/api/*` requests to the server via Vite config (target is co
 - Use Bun as the runtime and package manager (not npm/yarn)
 - Use TypeScript throughout
 - Use context7 MCP server to fetch up-to-date documentation for libraries
-- Use shadcn/ui components for all UI (import from `@/components/ui/*`)
+- Use shadcn/ui components for all UI (import from `@/components/ui/*`) — see **UI & Theming** below
+- Import the `cn` helper from `"cn"` (shadcn's own package), not from `clsx`/`tailwind-merge`
 - Use the `@/` path alias for imports (maps to `./src/`)
 - Use shadcn's semantic color tokens (e.g. `bg-background`, `text-muted-foreground`, `text-destructive`) instead of hardcoded Tailwind colors
 - Organize server endpoints into Express `Router` modules under `server/src/routes/` (e.g. `routes/users.ts`), mounted in `index.ts`
@@ -55,6 +56,31 @@ The client proxies `/api/*` requests to the server via Vite config (target is co
 - Use TanStack React Query (`useQuery`, `useMutation`) for server state management (not `useEffect` + `useState`)
 - Use the `ErrorAlert` component for error messages (`import ErrorAlert from "@/components/ErrorAlert"`). For static messages: `<ErrorAlert message="Failed to load data" />`. For mutation/query errors with automatic Axios message extraction: `<ErrorAlert error={mutation.error} fallback="Failed to save" />`.
 - Use the `ErrorMessage` component for field validation errors (`import ErrorMessage from "@/components/ErrorMessage"`): `{errors.name && <ErrorMessage message={errors.name.message} />}`
+
+## UI & Theming
+
+- **Install/add components with the CLI** — never hand-write files into `src/components/ui/`:
+  `cd client && bunx --bun shadcn@latest add <component>`
+- **Primitives are Base UI (`@base-ui/react`), not Radix.** The project was switched off `radix-ui`
+  and that package has been removed — do not reintroduce it. Base UI has no `asChild`; use its
+  `render` prop when you need to change the rendered element.
+- **Theme is shadcn's default**: `neutral` base color, `default` radius, Geist font.
+  `components.json` records this as `"style": "base-nova"`; `bunx --bun shadcn@latest preset resolve`
+  prints the full preset (currently code `b2fA`).
+- **`client/src/index.css`** holds the whole token set and `@import`s `tailwindcss`,
+  `tw-animate-css`, `shadcn/tailwind.css`, and `@fontsource-variable/geist`. The font is bundled —
+  there is no Google Fonts link in `index.html`.
+- **Dark mode is defined but not wired up.** `index.css` has a complete `.dark` token block and
+  `dark:` is bound to a `.dark` ancestor, but nothing toggles that class (`index.html` sets
+  `class="scheme-light"`). Adding a theme toggle is all that's missing.
+- **Custom app tokens** `--brand-*`, `--surface`, and `--panel` live alongside the shadcn tokens and
+  are used by the sign-in/marketing surfaces (`LoginPage`, `BrandPanel`, `Logo`, `Navbar`,
+  `ProtectedRoute`). These are brand blue while the shadcn primitives are neutral — an unresolved
+  mismatch worth settling before building more screens.
+- **Carousel**: `BrandPanel` renders shadcn's Carousel with its own arrows/dots built on the exported
+  `useCarousel` hook, rather than `CarouselPrevious`/`CarouselNext` (which position themselves at the
+  container edges). Listen to both `reInit` and `select` when tracking the active slide — the panel is
+  `hidden lg:flex`, so embla re-measures when it first becomes visible.
 
 ## Job Queue (pg-boss)
 

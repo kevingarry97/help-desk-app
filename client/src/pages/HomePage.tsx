@@ -13,7 +13,7 @@ export default function HomePage() {
   const name = session?.user.name ?? "there";
 
   return (
-    <div className="min-h-screen bg-[#f6f7f9]">
+    <div className="min-h-screen bg-surface">
       <Navbar />
 
       <main className="mx-auto max-w-6xl px-5 py-10">
