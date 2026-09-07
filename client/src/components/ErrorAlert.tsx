@@ -1,11 +1,8 @@
 import { AlertCircle } from "lucide-react";
 
 type Props = {
-  /** A fixed message. */
   message?: string;
-  /** An error from a mutation or query; its message is extracted when possible. */
   error?: unknown;
-  /** Used when `error` carries nothing readable. */
   fallback?: string;
 };
 
