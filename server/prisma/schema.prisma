@@ -77,6 +77,17 @@ model Verification {
   @@map("verification")
 }
 
+// Better Auth's rate-limit buckets (rateLimit.storage = "database" in src/lib/auth.ts).
+// Owned by Better Auth: it creates and prunes the rows itself.
+model RateLimit {
+  id          String @id
+  key         String @unique
+  count       Int
+  lastRequest BigInt
+
+  @@map("rateLimit")
+}
+
 enum TicketStatus {
   OPEN
   RESOLVED

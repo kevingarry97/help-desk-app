@@ -14,11 +14,20 @@ const ctx = await auth.$context;
 const existing = await prisma.user.findUnique({ where: { email } });
 
 if (existing) {
-  const user = await prisma.user.update({
-    where: { email },
-    data: { role: UserRole.admin },
-  });
-  console.log(`Admin already exists: ${user.email} (role: ${user.role}) — left password unchanged`);
+  // Never promote silently. ADMIN_EMAIL pointing at an existing agent — a typo, or a .env
+  // reused across environments — would otherwise hand that account the admin role with
+  // nothing in the log to show for it and no way to notice afterwards.
+  if (existing.role !== UserRole.admin) {
+    throw new Error(
+      `${email} already exists with role "${existing.role}". Refusing to promote an ` +
+        "existing account to admin — point ADMIN_EMAIL at a different address, or change " +
+        "the role deliberately.",
+    );
+  }
+
+  console.log(
+    `Admin already exists: ${existing.email} (role: ${existing.role}) — left unchanged`,
+  );
 } else {
   const hash = await ctx.password.hash(password);
 
