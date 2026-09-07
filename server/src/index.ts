@@ -1,12 +1,18 @@
 import express from "express";
+import cors from "cors";
 import { toNodeHandler } from "better-auth/node";
 import { prisma } from "./db";
 import { auth } from "./lib/auth";
 import { requireAuth } from "./middleware/require-auth";
+import { allowedOrigins } from "./lib/origins";
 import { TicketCategory, TicketStatus } from "../generated/prisma/enums";
 
 const app = express();
 const port = Number(process.env.PORT ?? 4000);
+
+// Above the auth handler so preflight OPTIONS is answered for /api/auth/* too.
+// credentials:true is required for the session cookie, and forbids origin "*".
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 
 app.all("/api/auth/{*any}", toNodeHandler(auth));
 

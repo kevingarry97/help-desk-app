@@ -1,29 +1,94 @@
+@import "tailwindcss";
+
+/* shadcn emits `dark:` utilities on every primitive. Tailwind v4 would otherwise
+   bind those to prefers-color-scheme, so on a machine in dark mode they'd fire
+   against a light-only token set and wreck the UI. Binding the variant to a
+   `.dark` ancestor (which nothing sets) keeps them inert until dark mode is
+   actually built. */
+@custom-variant dark (&:is(.dark *));
+
 :root {
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  color: #1a1d21;
-  background: #f6f7f9;
-  color-scheme: light;
+  --radius: 0.625rem;
+
+  /* Brand — sampled from the reference screenshot. */
+  --brand-50: #eef3ff;
+  --brand-100: #dbe5ff;
+  --brand-200: #bdd0ff;
+  --brand-500: #3a6df0;
+  --brand-600: #1f57e5;
+  --brand-700: #1a49c4;
+  --brand-900: #10307f;
+
+  /* shadcn semantic tokens (slate), with brand blue as the primary. */
+  --background: #ffffff;
+  --foreground: #101828;
+  --card: #ffffff;
+  --card-foreground: #101828;
+  --popover: #ffffff;
+  --popover-foreground: #101828;
+  --primary: #1f57e5;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #0f172a;
+  --muted: #f1f5f9;
+  --muted-foreground: #667085;
+  --accent: #f1f5f9;
+  --accent-foreground: #0f172a;
+  --destructive: #d92d20;
+  --border: #e4e7ec;
+  --input: #d0d5dd;
+  --ring: #1f57e5;
 }
 
-body {
-  margin: 0;
+@theme inline {
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-200: var(--brand-200);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+  --color-brand-900: var(--brand-900);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-main {
-  max-width: 40rem;
-  margin: 0 auto;
-  padding: 3rem 1.25rem;
-}
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
 
-h1 {
-  font-size: 1.5rem;
-  margin: 0 0 1rem;
-}
+  html {
+    color-scheme: light;
+  }
 
-.ok {
-  color: #15803d;
-}
-
-.error {
-  color: #b42318;
+  body {
+    @apply bg-background text-foreground;
+    margin: 0;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
 }
