@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 interface Health {
   status: string;
   uptime: number;
+  database: string;
 }
 
 export function App() {
@@ -27,9 +28,10 @@ export function App() {
       {error && <p className="error">Cannot reach the API: {error}</p>}
       {!error && !health && <p>Checking the API…</p>}
       {health && (
-        <p className="ok">
+        <p className={health.database === "connected" ? "ok" : "error"}>
           API is <strong>{health.status}</strong> — up{" "}
-          {Math.round(health.uptime)}s
+          {Math.round(health.uptime)}s · database{" "}
+          <strong>{health.database}</strong>
         </p>
       )}
     </main>
