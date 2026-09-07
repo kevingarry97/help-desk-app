@@ -1,0 +1,5 @@
+{
+  "name": "helpdesk",
+  "private": true,
+  "workspaces": ["core", "client", "server"]
+}

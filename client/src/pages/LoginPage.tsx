@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate, useNavigate } from "react-router";
+import { Navigate, useLocation, useNavigate } from "react-router";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod/v4";
@@ -20,6 +20,27 @@ const loginSchema = z.object({
 
 type LoginValues = z.infer<typeof loginSchema>;
 
+// A redirect target out of router state is still untrusted input: anything but a single
+// leading slash ("//evil.com", "https://evil.com", "/\evil.com") is discarded.
+const INTERNAL_PATH = /^\/(?![/\\])/;
+
+function redirectTarget(state: unknown): string {
+  const from = (
+    state as { from?: { pathname?: unknown; search?: unknown; hash?: unknown } } | null
+  )?.from;
+
+  if (!from || typeof from.pathname !== "string" || !INTERNAL_PATH.test(from.pathname)) {
+    return "/";
+  }
+
+  // ProtectedRoute stores the whole location, so keep the query and anchor a deep link
+  // arrived with instead of dropping them on the way back.
+  const search = typeof from.search === "string" ? from.search : "";
+  const hash = typeof from.hash === "string" ? from.hash : "";
+
+  return `${from.pathname}${search}${hash}`;
+}
+
 function Required() {
   return <span className="text-destructive">*</span>;
 }
@@ -27,6 +48,10 @@ function Required() {
 export default function LoginPage() {
   const { data: session, isPending } = useSession();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Where ProtectedRoute bounced them from, so a deep link survives signing in.
+  const from = redirectTarget(location.state);
   const [formError, setFormError] = useState<string | null>(null);
 
   const {
@@ -35,7 +60,7 @@ export default function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm<LoginValues>({ resolver: zodResolver(loginSchema) });
 
-  if (!isPending && session) return <Navigate to="/" replace />;
+  if (!isPending && session) return <Navigate to={from} replace />;
 
   const onSubmit = async (values: LoginValues) => {
     setFormError(null);
@@ -54,7 +79,7 @@ export default function LoginPage() {
       return;
     }
 
-    navigate("/", { replace: true });
+    navigate(from, { replace: true });
   };
 
   return (

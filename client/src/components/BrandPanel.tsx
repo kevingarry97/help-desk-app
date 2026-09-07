@@ -76,7 +76,12 @@ function MockDashboard() {
                   <td className="py-[7px] pr-2 text-[9px] text-white/85">{r.subject}</td>
                   <td className="py-[7px] pr-2 text-[9px] text-white/40">{r.who}</td>
                   <td className="py-[7px]">
-                    <span className={`rounded px-1.5 py-0.5 text-[8px] font-medium ${TONES[r.tone]}`}>
+                    <span
+                      className={cn(
+                        "rounded px-1.5 py-0.5 text-[8px] font-medium",
+                        TONES[r.tone],
+                      )}
+                    >
                       {r.cat}
                     </span>
                   </td>

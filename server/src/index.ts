@@ -1,82 +1,52 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 import { toNodeHandler } from "better-auth/node";
-import { prisma } from "./db";
 import { auth } from "./lib/auth";
-import { requireAuth } from "./middleware/require-auth";
-import { allowedOrigins } from "./lib/origins";
-import { TicketCategory, TicketStatus } from "../generated/prisma/enums";
+import { getAllowedOrigins } from "./lib/origins";
+import { clientIp } from "./middleware/client-ip";
+import { errorHandler } from "./middleware/error-handler";
+import { apiLimiter, authLimiter } from "./middleware/rate-limit";
+import { healthRouter } from "./routes/health";
+import { ticketsRouter } from "./routes/tickets";
+
+const allowedOrigins = getAllowedOrigins();
 
 const app = express();
 const port = Number(process.env.PORT ?? 4000);
 
-// Above the auth handler so preflight OPTIONS is answered for /api/auth/* too.
-// credentials:true is required for the session cookie, and forbids origin "*".
+const trustProxy = process.env.TRUST_PROXY;
+
+if (trustProxy) {
+  if (trustProxy === "true") {
+    throw new Error(
+      'TRUST_PROXY="true" trusts every hop, which puts X-Forwarded-For — and with it req.ip, ' +
+        "the key both rate limiters and Better Auth's IP resolution use — back under the " +
+        "caller's control. Set the number of proxy hops in front of the API (usually 1), a " +
+        'comma-separated list of proxy addresses, or a preset such as "loopback".',
+    );
+  }
+
+  app.set("trust proxy", /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy);
+}
+
+app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+
 app.use(cors({ origin: allowedOrigins, credentials: true }));
+
+app.use(clientIp);
+
+app.use("/api", apiLimiter);
+app.use("/api/auth", authLimiter);
 
 app.all("/api/auth/{*any}", toNodeHandler(auth));
 
 app.use(express.json());
 
-app.get("/api/health", async (_req, res) => {
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    res.json({ status: "ok", uptime: process.uptime(), database: "connected" });
-  } catch (error) {
-    console.error("Health check failed:", error);
-    res
-      .status(503)
-      .json({ status: "degraded", uptime: process.uptime(), database: "unreachable" });
-  }
-});
+app.use("/api/health", healthRouter);
+app.use("/api/tickets", ticketsRouter);
 
-app.get("/api/tickets", requireAuth, async (_req, res) => {
-  const tickets = await prisma.ticket.findMany({ orderBy: { createdAt: "desc" } });
-  res.json(tickets);
-});
-
-app.post("/api/tickets", requireAuth, async (req, res) => {
-  const { subject, body, requesterEmail, category } = req.body ?? {};
-
-  if (!subject || !body || !requesterEmail) {
-    res
-      .status(400)
-      .json({ error: "subject, body and requesterEmail are required" });
-    return;
-  }
-
-  const ticket = await prisma.ticket.create({
-    data: {
-      subject,
-      body,
-      requesterEmail,
-      category: category ?? TicketCategory.GENERAL_QUESTION,
-    },
-  });
-
-  res.status(201).json(ticket);
-});
-
-app.patch("/api/tickets/:id", requireAuth, async (req, res) => {
-  const { status } = req.body ?? {};
-
-  if (!status || !(status in TicketStatus)) {
-    res
-      .status(400)
-      .json({ error: `status must be one of ${Object.keys(TicketStatus).join(", ")}` });
-    return;
-  }
-
-  try {
-    const ticket = await prisma.ticket.update({
-      where: { id: req.params.id },
-      data: { status },
-    });
-    res.json(ticket);
-  } catch {
-    res.status(404).json({ error: `No ticket with id ${req.params.id}` });
-  }
-});
+app.use(errorHandler);
 
 app.listen(port, () => {
   console.log(`API listening on http://localhost:${port}`);
