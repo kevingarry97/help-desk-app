@@ -1,13 +1,17 @@
 import express from "express";
+import { toNodeHandler } from "better-auth/node";
 import { prisma } from "./db";
+import { auth } from "./lib/auth";
+import { requireAuth } from "./middleware/require-auth";
 import { TicketCategory, TicketStatus } from "../generated/prisma/enums";
 
 const app = express();
 const port = Number(process.env.PORT ?? 4000);
 
+app.all("/api/auth/{*any}", toNodeHandler(auth));
+
 app.use(express.json());
 
-/** Health check that proves the database is actually reachable, not just that the process is up. */
 app.get("/api/health", async (_req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
@@ -20,12 +24,12 @@ app.get("/api/health", async (_req, res) => {
   }
 });
 
-app.get("/api/tickets", async (_req, res) => {
+app.get("/api/tickets", requireAuth, async (_req, res) => {
   const tickets = await prisma.ticket.findMany({ orderBy: { createdAt: "desc" } });
   res.json(tickets);
 });
 
-app.post("/api/tickets", async (req, res) => {
+app.post("/api/tickets", requireAuth, async (req, res) => {
   const { subject, body, requesterEmail, category } = req.body ?? {};
 
   if (!subject || !body || !requesterEmail) {
@@ -47,7 +51,7 @@ app.post("/api/tickets", async (req, res) => {
   res.status(201).json(ticket);
 });
 
-app.patch("/api/tickets/:id", async (req, res) => {
+app.patch("/api/tickets/:id", requireAuth, async (req, res) => {
   const { status } = req.body ?? {};
 
   if (!status || !(status in TicketStatus)) {
