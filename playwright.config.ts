@@ -7,8 +7,6 @@ export default defineConfig({
   testDir: "./e2e/tests",
   globalSetup: "./e2e/global-setup.ts",
 
-  // One database, one seeded dataset, one client IP. Raising this needs tests that namespace
-  // their own data — the truncate runs once per run, not per test.
   fullyParallel: false,
   workers: 1,
 
