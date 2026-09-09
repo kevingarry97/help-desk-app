@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import axios from "axios";
-import type { UserListItem } from "core/schemas/users";
-
 import UsersPage from "@/pages/UsersPage";
+import { makeUsers } from "@/test/fixtures";
 import { renderWithQuery } from "@/test/render";
 
 // api.ts calls axios.create() at import time, so the instance has to exist before the
@@ -15,23 +14,11 @@ vi.mock("axios", () => {
 
 const api = vi.mocked(axios, { deep: true }).create();
 
-function user(overrides: Partial<UserListItem> & { id: string }): UserListItem {
-  return {
-    name: "Ada Lovelace",
-    email: "ada@example.com",
-    role: "agent",
-    image: null,
-    createdAt: "2026-03-04T10:00:00.000Z",
-    sortOrder: 1,
-    ...overrides,
-  };
-}
-
-const USERS = [
-  user({ id: "1", name: "Ada Lovelace", email: "ada@example.com", role: "admin" }),
-  user({ id: "2", name: "Grace Hopper", email: "grace@example.com", sortOrder: 2 }),
-  user({ id: "3", name: "Alan Turing", email: "alan@example.com", sortOrder: 3 }),
-];
+const USERS = makeUsers(
+  { name: "Ada Lovelace", email: "ada@example.com", role: "admin" },
+  { name: "Grace Hopper", email: "grace@example.com" },
+  { name: "Alan Turing", email: "alan@example.com" },
+);
 
 beforeEach(() => {
   vi.mocked(api.get).mockReset();
@@ -85,6 +72,60 @@ describe("UsersPage", () => {
 
     expect(screen.getByText("admin")).toBeInTheDocument();
     expect(screen.getAllByText("agent")).toHaveLength(2);
+  });
+
+  // The skeleton has no text or role of its own, so it is counted through shadcn's
+  // data-slot contract rather than its Tailwind classes, which change with any restyle.
+  const skeletons = (container: HTMLElement) =>
+    container.querySelectorAll('[data-slot="skeleton"]');
+
+  it("shows a skeleton, not an empty table, while the list is still loading", async () => {
+    // A promise that never settles holds the page in its pending branch. The bug this
+    // guards is the page flashing "No users yet" before the first response arrives, which
+    // reads as an empty directory rather than a slow one.
+    vi.mocked(api.get).mockReturnValue(new Promise(() => {}));
+
+    const { container } = renderWithQuery(<UsersPage />);
+
+    expect(skeletons(container).length).toBeGreaterThan(0);
+    expect(screen.queryAllByTestId("user-row")).toHaveLength(0);
+    expect(screen.queryByText("No users yet")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("replaces the skeleton with the rows once they arrive", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: USERS });
+
+    const { container } = renderWithQuery(<UsersPage />);
+
+    await waitFor(() => expect(screen.getAllByTestId("user-row")).toHaveLength(3));
+
+    expect(skeletons(container)).toHaveLength(0);
+    expect(screen.queryByText("No users yet")).not.toBeInTheDocument();
+  });
+
+  it("shows no skeleton once a load has failed", async () => {
+    vi.mocked(api.get).mockRejectedValue({
+      response: { status: 403, data: { error: "Forbidden" } },
+    });
+
+    const { container } = renderWithQuery(<UsersPage />);
+
+    await screen.findByRole("alert");
+
+    // Otherwise the page reports the failure and goes on pretending to load.
+    expect(skeletons(container)).toHaveLength(0);
+  });
+
+  it("keeps the heading and its explanation visible in every state", async () => {
+    vi.mocked(api.get).mockReturnValue(new Promise(() => {}));
+
+    renderWithQuery(<UsersPage />);
+
+    // The page chrome is outside the loading branch, so an admin is never left looking at a
+    // blank panel with no indication of what is loading.
+    expect(screen.getByRole("heading", { level: 1, name: "Users" })).toBeInTheDocument();
+    expect(screen.getByText(/Drag a row by its handle/)).toBeInTheDocument();
   });
 
   it("reports a failed load instead of rendering an empty table", async () => {

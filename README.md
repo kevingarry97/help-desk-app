@@ -119,6 +119,13 @@ machine has 20.18.2, so running it on Bun avoids a Node upgrade.
 
 ## Scripts
 
-Both folders have `typecheck`, and so does the root (it covers the Playwright
-harness). The client also has `build` and `preview`; the server has `start` for
-running without hot reload, plus `db:test:*` for the E2E database.
+`bun run typecheck` from the root checks the whole repo — the Playwright
+harness plus every workspace. Each workspace also has its own `typecheck`.
+`bun run test:component` runs the Vitest suite and `bun run test:e2e` the Playwright
+one, both from the root. The client adds `build` and `preview`; the server has `start`
+for running without hot reload, plus `db:test:*` for the E2E database.
+
+Every `.ts` file belongs to a tsconfig `include`. Leaving one out means the
+editor falls back to an inferred CommonJS project and reports phantom
+`verbatimModuleSyntax` errors on correct code — so add new directories to the
+relevant `include` rather than letting them sit uncovered.

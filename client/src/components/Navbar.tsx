@@ -51,9 +51,6 @@ export default function Navbar() {
           >
             <Logo />
           </Link>
-
-          {/* Visible at every width: this is the only route into admin functionality,
-              and there is no mobile menu to fall back to. */}
           {isAdmin && (
             <nav className="flex items-center gap-1">
               <NavLink

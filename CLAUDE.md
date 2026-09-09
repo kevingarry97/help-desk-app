@@ -143,11 +143,76 @@ The client proxies `/api/*` requests to the server via Vite config (target is co
 - **Prefer component tests** for the majority of coverage (rendering, states, data display, error handling). Reserve E2E tests for things that truly need a real browser + server: navigation, auth redirects, and full-stack integration flows (e.g. webhook creates data that appears in the UI).
 
 ### Component Tests
-- **Framework**: Vitest + React Testing Library
-- Run with `cd client && bun run test` (single run) or `bun run test:watch` (watch mode)
+- **Framework**: Vitest + React Testing Library. Config in `client/vitest.config.ts`, which extends the app's Vite config so `@/…` and the `core` package resolve exactly as they do in the bundler
+- Run with `bun run test:component` from the root (`test:component:watch` for watch mode). Inside `client/`, `bun run test` / `test:watch` / `test:component` do the same thing
+- Run a single file with `bun run test:component src/pages/LoginPage.test.tsx`, or filter by name with `-t "validation"`
 - Place test files next to the component: `ComponentName.test.tsx`
-- Use `renderWithQuery` from `@/test/render` to wrap components that use TanStack React Query
-- Mock Axios with `vi.mock("axios")` and `vi.mocked(axios, { deep: true })`
+
+#### Writing component tests
+
+**Write these yourself — there is no agent for them.** `e2e-test-writer` is Playwright-only
+and will refuse; asking it for a component test gets you a browser test you did not want.
+
+This is where the majority of coverage belongs: rendering, every state a component can be
+in, data display, form validation, and error handling. Reach for E2E only when a real
+browser and a real server are the point.
+
+**Test helpers** live in `client/src/test/`:
+
+- `renderWithQuery` (`@/test/render`) — renders inside a fresh `QueryClientProvider` with
+  retries off, so an error state shows on the first rejection. `createQueryWrapper` returns
+  the client and wrapper separately for `renderHook`.
+- `makeUser` / `makeUsers` (`@/test/fixtures`) — build `UserListItem`s with every field
+  defaulted, so a test names only what it is about. `makeUsers` assigns `id` and `sortOrder`
+  by position.
+- `setup.ts` stubs `matchMedia`, `IntersectionObserver` and `ResizeObserver`. jsdom has
+  none, and embla (behind `BrandPanel`, which `LoginPage` renders) crashes without them.
+
+**Mocking, in order of preference — mock the boundary, not the app:**
+
+- **Axios**: `api.ts` calls `axios.create()` at import time, so the instance must exist
+  before the module graph evaluates. Use a factory, not automocking:
+  ```ts
+  vi.mock("axios", () => {
+    const instance = { get: vi.fn(), patch: vi.fn() };
+    return { default: { create: vi.fn(() => instance) } };
+  });
+  const api = vi.mocked(axios, { deep: true }).create();
+  ```
+- **Auth**: `vi.mock("@/lib/auth-client", () => ({ useSession: vi.fn(), signOut: vi.fn() }))`.
+  Drive the session states — pending, anonymous, agent, admin — rather than the components
+  that read them.
+- **Routing**: do *not* mock. Wrap in `MemoryRouter` with real `Routes`, and assert on the
+  heading the destination renders. A spy on `useNavigate` drifts from what react-router
+  actually does with `replace`, state, and guards.
+
+**Querying**: `getByRole`, `getByLabelText`, `getByText`. Never CSS classes — this project
+restyles often. When an element has no role or text (the loading skeleton), query the
+component's `data-slot` contract (`[data-slot="skeleton"]`), not its Tailwind classes.
+
+**The trap that has bitten this codebase twice:** a negative assertion passes before the
+component has rendered. `toBeHidden()` and `queryBy…not.toBeInTheDocument()` are both
+satisfied by an element that does not exist *yet*, so a test can pass while asserting
+nothing. Always assert something positive first — await a heading, a button, a row count —
+then assert the absence. Same trap in a nested guard: an `AdminRoute` loading test mounted
+under `ProtectedRoute` passes on the outer spinner even with `AdminRoute`'s branch deleted,
+so mount the component under test in isolation.
+
+**Verify a new test by breaking what it covers.** Invert the condition in the component,
+confirm the test goes red, restore. A test that stays green against broken code is worse
+than none. This has caught two vacuous tests here — both looked correct on review.
+
+**Cover every state a component can be in**, not just the happy one: loading/skeleton,
+empty, error, and the disabled or in-flight variants. Those branches are where the bugs are
+and they are cheap to reach with a mock.
+
+**Existing suites** (79 tests): `LoginPage` (inputs, validation, submit, redirects),
+`UserRow`, `UsersPage`, `ErrorAlert`, `ProtectedRoute` (covers `AdminRoute`), `Navbar`,
+`UsersTable`, `use-users`, `lib/reorder`.
+
+**Deliberately untested**: `Logo`, `AppLayout`, `RouteSpinner`, `ErrorMessage` — presentational
+with no branching, so a test would restate the JSX. `BrandPanel` needs real layout. `HomePage`
+renders placeholders until it is wired to data.
 
 ### E2E Tests
 - **Framework**: Playwright. Config at `playwright.config.ts`, specs in `e2e/tests/`

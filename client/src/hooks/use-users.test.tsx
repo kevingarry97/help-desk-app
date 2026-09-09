@@ -4,6 +4,7 @@ import axios from "axios";
 import type { UserListItem } from "core/schemas/users";
 
 import { useReorderUsers, usersQueryKey } from "@/hooks/use-users";
+import { makeUsers } from "@/test/fixtures";
 import { createQueryWrapper } from "@/test/render";
 
 vi.mock("axios", () => {
@@ -13,19 +14,7 @@ vi.mock("axios", () => {
 
 const api = vi.mocked(axios, { deep: true }).create();
 
-function user(id: string, sortOrder: number): UserListItem {
-  return {
-    id,
-    name: `User ${id}`,
-    email: `${id}@example.com`,
-    role: "agent",
-    image: null,
-    createdAt: "2026-03-04T10:00:00.000Z",
-    sortOrder,
-  };
-}
-
-const USERS = [user("a", 1), user("b", 2), user("c", 3)];
+const USERS = makeUsers({ id: "a" }, { id: "b" }, { id: "c" });
 
 function setup() {
   const { queryClient, Wrapper } = createQueryWrapper();
@@ -64,7 +53,7 @@ describe("useReorderUsers", () => {
 
   it("adopts the order the server confirms", async () => {
     vi.mocked(api.patch).mockResolvedValue({
-      data: [user("c", 1), user("a", 2), user("b", 3)],
+      data: makeUsers({ id: "c" }, { id: "a" }, { id: "b" }),
     });
 
     const { result, cachedIds } = setup();
