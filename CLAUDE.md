@@ -7,7 +7,7 @@ A ticket management system that uses AI to classify, respond to, and route suppo
 ## Tech Stack
 
 - **Frontend**: React + TypeScript + Vite (port 5173) + Tailwind v4 + shadcn/ui (Base UI primitives)
-- **Backend**: Express + TypeScript + Bun (port 3000)
+- **Backend**: Express + TypeScript + Bun (port 4000)
 - **Database**: PostgreSQL with Prisma ORM
 - **AI**: OpenAI GPT-5 Nano via Vercel AI SDK (`@ai-sdk/openai`)
 - **Auth**: Better Auth (email/password, database sessions)
@@ -19,7 +19,7 @@ A ticket management system that uses AI to classify, respond to, and route suppo
 /core     - Shared code (Zod schemas, types) — Bun workspace package
 /client   - React frontend (Vite)
 /server   - Express backend
-/e2e      - Playwright E2E tests
+/e2e      - Playwright harness (test-env.ts, global-setup.ts) + specs in /e2e/tests
 ```
 
 ## Development
@@ -32,7 +32,7 @@ cd server && bun run dev
 cd client && bun run dev
 ```
 
-The client proxies `/api/*` requests to the server via Vite config (target is configurable via `VITE_API_URL` env var, defaults to `http://localhost:3000`).
+The client proxies `/api/*` requests to the server via Vite config (target is configurable via `VITE_API_URL` env var, defaults to `http://localhost:4000`).
 
 ## Key Conventions
 
@@ -126,9 +126,46 @@ The client proxies `/api/*` requests to the server via Vite config (target is co
 - Mock Axios with `vi.mock("axios")` and `vi.mocked(axios, { deep: true })`
 
 ### E2E Tests
-- **Framework**: Playwright
-- Use the `e2e-test-writer` agent for writing Playwright E2E tests
-- Run with `bun run test:e2e` from root
-- **Only use for things that truly require a real browser + server** — never duplicate what unit tests already cover
-- Valid E2E scenarios: auth redirects, cross-page navigation, data persistence after reload, full-stack integration flows (e.g. webhook creates data → UI displays it)
-- Invalid E2E scenarios: rendering, display logic, component states, API call verification, form validation, error messages — use component tests for these
+- **Framework**: Playwright. Config at `playwright.config.ts`, specs in `e2e/tests/`
+- Run with `bun run test:e2e` from root. Also `test:e2e:ui`, `test:e2e:headed`, `test:e2e:report`
+- First checkout: `docker compose up -d` then `bun run test:e2e:install` (downloads Chromium)
+- Runs against a separate `helpdesk_test` database on its own ports (server 4001, Vite 5174), so it coexists with `bun run dev`. The dev database is never touched.
+- Existing specs: `e2e/tests/auth-access.spec.ts` (redirects, role gating, reload persistence) and `e2e/tests/login-redirect.spec.ts` (the only form sign-in — see the budget note below)
+
+#### Writing E2E tests — use the `e2e-test-writer` agent
+
+**Do not hand-write specs in `e2e/tests/`.** Delegate to the `e2e-test-writer` agent
+(`.claude/agents/e2e-test-writer.md`), which carries the harness constraints that are not
+obvious from the code and that produce confusing failures when missed.
+
+Invoke it with the Agent tool, `subagent_type: "e2e-test-writer"`. Give it:
+
+- The behaviour to cover, and the routes or components involved.
+- Anything already known about the surface — a new route, a new role gate, a flow that spans
+  client and server.
+- Whether it may touch application code (it will ask before adding a `data-testid`).
+
+It will read the components before writing selectors, run `bun run test:e2e`, and report the
+real output. Its contract requires it to prove each new test **fails when the behaviour it
+covers is broken** — a test that passes against broken code is worse than none, and this
+project has already had one (`toBeHidden()` racing React's first paint, which passed while
+asserting nothing).
+
+What it will refuse, correctly: rendering, display logic, component states, form validation
+messages, error copy, and "was this API called". Those belong in component tests — if you
+ask for one, expect it to say so rather than write a slow browser test.
+
+Constraints it is holding, worth knowing before you brief it:
+
+- **Sign-ins are a budget.** Better Auth allows 3 per 10s per IP, persisted in Postgres.
+  Global setup clears the counter after minting its own sessions, so a run starts with all
+  three, and `login-redirect.spec.ts` claims one. Every other spec uses saved sessions
+  (`test.use({ storageState: STORAGE_STATE.admin })`), never a real sign-in.
+- **Seeded accounts are the only accounts** — sign-up is disabled. `admin@e2e.test` and
+  `agent@e2e.test`, credentials in `e2e/test-env.ts`.
+- **The database resets once per run, not per test.** Specs that mutate data must clean up
+  or tolerate rows left by others.
+- **`workers: 1`** — one database, one dataset, one client IP.
+
+`e2e/tests/README.md` is the short version of the same rules, for when you are reading a
+spec rather than writing one.

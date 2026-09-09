@@ -6,6 +6,11 @@
     "dev": "bun --hot src/index.ts",
     "start": "bun src/index.ts",
     "db:seed": "bun prisma/seed.ts",
+    "db:test:create": "bun prisma/test-db.ts create",
+    "db:test:migrate": "bunx --bun prisma migrate deploy",
+    "db:test:seed": "bun prisma/seed-test.ts",
+    "db:test:drop": "bun prisma/test-db.ts drop",
+    "db:test:reset": "bun run db:test:drop && bun run db:test:create && bun run db:test:migrate && bun run db:test:seed",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

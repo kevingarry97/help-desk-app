@@ -82,6 +82,26 @@ bunx --bun prisma generate                    # regenerate client
 docker compose down -v                        # reset the database entirely
 ```
 
+## Testing
+
+End-to-end tests run under Playwright against a **separate database** — `helpdesk_test`,
+a second database inside the same `helpdesk-db` container. The development database is
+never touched.
+
+```sh
+docker compose up -d          # once, if it isn't already running
+bun run test:e2e:install      # once, downloads Chromium
+bun run test:e2e
+```
+
+The suite starts its own server on **4001** and Vite on **5174**, so it runs happily while
+`bun run dev` is still holding 4000/5173. Everything it needs — ports, connection string,
+seeded credentials — lives in `e2e/test-env.ts`; there is no `.env.test` to copy.
+
+Each run creates the database if missing, applies migrations, truncates every table, and
+seeds one admin and one agent. Specs go in `e2e/tests/` — see the README there before
+writing the first one, particularly the note about not signing in from a test.
+
 ## Notes
 
 **Prisma runs under Bun**, not Node. `prisma@latest` is currently an 8.0.0
@@ -99,5 +119,6 @@ machine has 20.18.2, so running it on Bun avoids a Node upgrade.
 
 ## Scripts
 
-Both folders have `typecheck`. The client also has `build` and `preview`; the
-server has `start` for running without hot reload.
+Both folders have `typecheck`, and so does the root (it covers the Playwright
+harness). The client also has `build` and `preview`; the server has `start` for
+running without hot reload, plus `db:test:*` for the E2E database.

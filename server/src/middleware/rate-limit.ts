@@ -7,14 +7,19 @@ const shared = {
   skip: (req: { method: string }) => req.method === "OPTIONS",
 } as const;
 
+function limitFrom(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export const apiLimiter = rateLimit({
   ...shared,
-  limit: 300,
+  limit: limitFrom(process.env.RATE_LIMIT_API_MAX, 300),
   message: { error: "Too many requests" },
 });
 
 export const authLimiter = rateLimit({
   ...shared,
-  limit: 120,
+  limit: limitFrom(process.env.RATE_LIMIT_AUTH_MAX, 120),
   message: { error: "Too many authentication requests" },
 });

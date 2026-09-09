@@ -5,3 +5,12 @@ dist/
 *.log
 .DS_Store
 .vite/
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# Live session cookies for the seeded E2E accounts
+/e2e/.auth/
