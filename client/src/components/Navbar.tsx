@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { NavLink, useNavigate } from "react-router";
+import { Link, NavLink, useNavigate } from "react-router";
 import { LogOut } from "lucide-react";
 import { cn } from "cn";
 
@@ -44,7 +44,13 @@ export default function Navbar() {
     <header className="border-b border-border bg-card">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-5">
         <div className="flex items-center gap-4 sm:gap-8">
-          <Logo />
+          <Link
+            to="/"
+            aria-label="Helpdesk home"
+            className="rounded-md transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            <Logo />
+          </Link>
 
           {/* Visible at every width: this is the only route into admin functionality,
               and there is no mobile menu to fall back to. */}
