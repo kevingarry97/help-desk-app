@@ -7,9 +7,8 @@ import { useSession } from "@/lib/auth-client";
 /**
  * Renders admin-only routes. This decides what the browser shows and nothing more: the
  * API answers direct calls regardless, so every admin-only endpoint has to mount
- * `requireRole(Role.Admin)` (server/src/middleware/require-role.ts) as well. There are
- * none yet — /users is a stub with no backing endpoint — so this redirect is currently
- * the only thing gating the page, and it is not a security boundary.
+ * `requireRole(Role.Admin)` (server/src/middleware/require-role.ts) as well. /users does —
+ * `usersRouter` guards the whole router — and that, not this redirect, is the boundary.
  */
 export default function AdminRoute() {
   const { data: session, isPending } = useSession();

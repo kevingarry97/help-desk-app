@@ -7,12 +7,15 @@
     "jsx": "react-jsx",
     "verbatimModuleSyntax": true,
     "noEmit": true,
+    // vitest.config.ts imports ./vite.config.ts by full path: Vite's native config loader
+    // requires the extension, and TypeScript only permits one with this flag.
+    "allowImportingTsExtensions": true,
     "strict": true,
     "skipLibCheck": true,
-    "types": ["vite/client", "node"],
+    "types": ["vite/client", "node", "vitest/globals"],
     "paths": {
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "vite.config.ts", "vitest.config.ts"]
 }

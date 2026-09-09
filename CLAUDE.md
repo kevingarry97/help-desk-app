@@ -52,8 +52,8 @@ The client proxies `/api/*` requests to the server via Vite config (target is co
 - Use the shared `Role` constant instead of hardcoded `"admin"` / `"agent"` strings (import from `core/constants/role.ts`, e.g. `import { Role } from "core/constants/role.ts"`)
 - Define shared constants and domain types in `core/constants/` as union types (not `enum` — the client has `erasableSyntaxOnly` enabled). Use `as const` objects when runtime access is needed (e.g. `Role`), and plain union types when only type checking is needed (e.g. `type TicketStatus = "open" | "resolved" | "closed"`).
 - Use React Hook Form with Zod resolver for client-side form validation (`useForm` + `zodResolver` from `@hookform/resolvers/zod`)
-- Use Axios for HTTP requests (not `fetch`)
-- Use TanStack React Query (`useQuery`, `useMutation`) for server state management (not `useEffect` + `useState`)
+- Use Axios for HTTP requests (not `fetch`) — via the shared instance in `client/src/lib/api.ts`, which is `baseURL: "/api"` so the Vite proxy keeps everything same-origin
+- Use TanStack React Query (`useQuery`, `useMutation`) for server state management (not `useEffect` + `useState`). The `QueryClient` lives in `client/src/lib/query-client.ts` and is provided in `main.tsx`; query hooks go in `client/src/hooks/`
 - Use the `ErrorAlert` component for error messages (`import ErrorAlert from "@/components/ErrorAlert"`). For static messages: `<ErrorAlert message="Failed to load data" />`. For mutation/query errors with automatic Axios message extraction: `<ErrorAlert error={mutation.error} fallback="Failed to save" />`.
 - Use the `ErrorMessage` component for field validation errors (`import ErrorMessage from "@/components/ErrorMessage"`): `{errors.name && <ErrorMessage message={errors.name.message} />}`
 
@@ -100,6 +100,30 @@ The client proxies `/api/*` requests to the server via Vite config (target is co
 - Status flow: `new` → `processing` (AI working) → `open` (if not auto-resolved) or `resolved` (if auto-resolved)
 - `new` and `processing` tickets are system-managed and never shown in the agent UI — agents only see `open`, `resolved`, and `closed` tickets
 - The `/api/tickets` endpoint excludes `new` and `processing` tickets by default (no `status` filter param)
+
+## User Management
+
+- **Route**: `/users`, admin-only. Gated on the client by `AdminRoute` and on the server by
+  `requireRole(Role.Admin)` mounted on the whole `usersRouter` — the client guard decides what
+  renders, the server guard is the boundary.
+- **Endpoints** (`server/src/routes/users.ts`):
+  - `GET /api/users` — every user, ordered by `sortOrder` then `createdAt`.
+  - `PATCH /api/users/order` — body `{ ids: string[] }`, the *whole* list in its new order.
+    Answers 409 if that set no longer matches the table, so a client holding a stale list
+    refetches instead of writing positions for rows that no longer exist. Runs in a
+    transaction that locks the user rows, so two admins reordering at once serialise.
+- **`User.sortOrder`** is `Int @default(autoincrement())`, not a constant default: a user
+  created after an admin has arranged the list has to land at the end of it. A reorder
+  renumbers rows densely and then `setval`s the sequence past the new maximum, or the next
+  insert would be handed a value from the middle of the list.
+- **Drag and drop** is dnd-kit (`@dnd-kit/core`, `/sortable`, `/modifiers`, `/utilities`) in
+  `client/src/components/users/`. Rows carry `data-testid="user-row"` and `data-user-id`; each
+  drag handle is a button labelled `Reorder <name>`. Keyboard reordering works out of the box
+  (focus a handle, Space, arrows, Space) and the announcements are overridden to say names and
+  positions rather than ids.
+- **`bun run db:seed:demo`** (in `server/`) fills the dev database with six demo users so the
+  ordering is visible. They have no credential account and cannot sign in; remove them with
+  `bun prisma/seed-demo-users.ts --clear`.
 
 ## Authentication
 

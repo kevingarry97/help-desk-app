@@ -25,7 +25,14 @@ model User {
   sessions      Session[]
   accounts      Account[]
 
+  // Admin-controlled display order for /users. A sequence, not a constant default: a user
+  // created after an admin has arranged the list has to land at the *end* of it, and with
+  // `@default(0)` every new account would sort ahead of every arranged one. Not unique —
+  // two rows sharing a value is a tie, not a corruption, and reorders renumber densely.
+  sortOrder     Int       @default(autoincrement())
+
   @@unique([email])
+  @@index([sortOrder])
   @@map("user")
 }
 

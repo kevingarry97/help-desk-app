@@ -9,6 +9,7 @@ import { errorHandler } from "./middleware/error-handler";
 import { apiLimiter, authLimiter } from "./middleware/rate-limit";
 import { healthRouter } from "./routes/health";
 import { ticketsRouter } from "./routes/tickets";
+import { usersRouter } from "./routes/users";
 
 const allowedOrigins = getAllowedOrigins();
 
@@ -45,6 +46,7 @@ app.use(express.json());
 
 app.use("/api/health", healthRouter);
 app.use("/api/tickets", ticketsRouter);
+app.use("/api/users", usersRouter);
 
 app.use(errorHandler);
 

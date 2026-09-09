@@ -1,3 +1,91 @@
+import { Users } from "lucide-react";
+
+import ErrorAlert from "@/components/ErrorAlert";
+import UsersTable from "@/components/users/UsersTable";
+import { USER_GRID } from "@/components/users/UserRow";
+import { useReorderUsers, useUsers } from "@/hooks/use-users";
+import { Skeleton } from "@/components/ui/skeleton";
+
+function TableSkeleton() {
+  return (
+    <div className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
+      <div className="h-11 border-b border-border bg-muted/40" />
+      {[0, 1, 2, 3].map((row) => (
+        <div key={row} className={`${USER_GRID} h-[4.5rem] border-b border-border last:border-b-0`}>
+          <Skeleton className="size-4" />
+          <Skeleton className="size-7 rounded-md" />
+          <div className="flex items-center gap-3">
+            <Skeleton className="hidden size-10 rounded-full sm:block" />
+            <div className="space-y-1.5">
+              <Skeleton className="h-3.5 w-32" />
+              <Skeleton className="h-3 w-44" />
+            </div>
+          </div>
+          <Skeleton className="h-5 w-16 rounded-full" />
+          <Skeleton className="hidden h-3.5 w-20 sm:block" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="rounded-xl bg-card px-6 py-16 text-center ring-1 ring-foreground/10">
+      <Users className="mx-auto size-8 text-muted-foreground/50" />
+      <p className="mt-3 text-sm font-medium text-foreground">No users yet</p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Accounts are created by seeding the database.
+      </p>
+    </div>
+  );
+}
+
 export default function UsersPage() {
-  return <h1 className="text-2xl font-bold tracking-tight text-foreground">Users</h1>;
+  const { data: users, isPending, isError, error } = useUsers();
+  const reorder = useReorderUsers();
+
+  return (
+    <>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Users</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Everyone with access to the helpdesk. Drag a row by its handle to change the
+            order.
+          </p>
+        </div>
+
+        {/* Reserves no space when idle — the list is short enough that a row jumping by a
+            line height to make room for this would be more distracting than the delay. */}
+        {reorder.isPending && (
+          <span className="text-xs text-muted-foreground">Saving order…</span>
+        )}
+      </div>
+
+      <div className="mt-7 space-y-4">
+        {isError && <ErrorAlert error={error} fallback="Failed to load users." />}
+
+        {reorder.isError && (
+          <ErrorAlert
+            error={reorder.error}
+            fallback="Could not save the new order. The list has been put back."
+          />
+        )}
+
+        {isPending && <TableSkeleton />}
+
+        {users &&
+          (users.length === 0 ? (
+            <EmptyState />
+          ) : (
+            <UsersTable
+              users={users}
+              onReorder={(ids) => reorder.mutate(ids)}
+              isSaving={reorder.isPending}
+            />
+          ))}
+      </div>
+    </>
+  );
 }
