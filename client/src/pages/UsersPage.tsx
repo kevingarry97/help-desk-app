@@ -1,6 +1,7 @@
 import { Users } from "lucide-react";
 
 import ErrorAlert from "@/components/ErrorAlert";
+import CreateUserSheet from "@/components/users/CreateUserSheet";
 import UsersTable from "@/components/users/UsersTable";
 import { USER_GRID } from "@/components/users/UserRow";
 import { useReorderUsers, useUsers } from "@/hooks/use-users";
@@ -35,7 +36,7 @@ function EmptyState() {
       <Users className="mx-auto size-8 text-muted-foreground/50" />
       <p className="mt-3 text-sm font-medium text-foreground">No users yet</p>
       <p className="mt-1 text-sm text-muted-foreground">
-        Accounts are created by seeding the database.
+        Use “New user” to add the first account.
       </p>
     </div>
   );
@@ -56,11 +57,13 @@ export default function UsersPage() {
           </p>
         </div>
 
-        {/* Reserves no space when idle — the list is short enough that a row jumping by a
-            line height to make room for this would be more distracting than the delay. */}
-        {reorder.isPending && (
-          <span className="text-xs text-muted-foreground">Saving order…</span>
-        )}
+        <div className="flex items-center gap-3">
+          {reorder.isPending && (
+            <span className="text-xs text-muted-foreground">Saving order…</span>
+          )}
+
+          <CreateUserSheet />
+        </div>
       </div>
 
       <div className="mt-7 space-y-4">

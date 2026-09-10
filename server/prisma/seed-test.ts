@@ -1,6 +1,6 @@
 import { prisma } from "../src/db";
 import { UserRole } from "../generated/prisma/enums";
-import { createUserWithPassword } from "./create-user";
+import { createUserWithPassword } from "../src/lib/create-user";
 import { assertTestDatabase, truncateAll } from "./test-db";
 
 /**

@@ -40,4 +40,25 @@ if (!window.ResizeObserver) {
   } as unknown as typeof ResizeObserver;
 }
 
+// jsdom implements no PointerEvent either. Base UI's Radio re-dispatches a click as one so
+// that a modifier-click on an option behaves the way it would on a native input, and throws
+// on the missing constructor before any state changes — so a radio simply never checks.
+// MouseEvent carries every property that path reads.
+if (!window.PointerEvent) {
+  class PointerEventPolyfill extends MouseEvent {
+    readonly pointerId: number;
+    readonly pointerType: string;
+    readonly isPrimary: boolean;
+
+    constructor(type: string, params: PointerEventInit = {}) {
+      super(type, params);
+      this.pointerId = params.pointerId ?? 0;
+      this.pointerType = params.pointerType ?? "";
+      this.isPrimary = params.isPrimary ?? false;
+    }
+  }
+
+  window.PointerEvent = PointerEventPolyfill as unknown as typeof PointerEvent;
+}
+
 afterEach(cleanup);

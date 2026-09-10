@@ -1,8 +1,11 @@
 import { Router } from "express";
-import { reorderUsersSchema } from "core/schemas/users";
+import { createUserSchema, reorderUsersSchema } from "core/schemas/users";
 import { Role } from "core/constants/role";
 
 import { prisma } from "../db";
+import { createUserWithPassword } from "../lib/create-user";
+import { isUniqueViolation } from "../lib/prisma-errors";
+import { USER_LIST_ORDER, USER_LIST_SELECT } from "../lib/user-select";
 import { validate } from "../lib/validate";
 import { requireAuth } from "../middleware/require-auth";
 import { requireRole } from "../middleware/require-role";
@@ -13,22 +16,6 @@ export const usersRouter = Router();
 // renders and nothing more — this is the access boundary.
 usersRouter.use(requireAuth, requireRole(Role.Admin));
 
-/** Mirrors userListItemSchema in core/schemas/users.ts. No password material lives on this
- *  model, but selecting explicitly means a column added later is not exposed by accident. */
-const USER_LIST_SELECT = {
-  id: true,
-  name: true,
-  email: true,
-  role: true,
-  image: true,
-  createdAt: true,
-  sortOrder: true,
-} as const;
-
-// createdAt breaks ties: sortOrder is not unique, and rows that have never been reordered
-// carry sequence values that only happen to be distinct.
-const USER_LIST_ORDER = [{ sortOrder: "asc" }, { createdAt: "asc" }] as const;
-
 usersRouter.get("/", async (_req, res) => {
   const users = await prisma.user.findMany({
     select: USER_LIST_SELECT,
@@ -36,6 +23,47 @@ usersRouter.get("/", async (_req, res) => {
   });
 
   res.json(users);
+});
+
+/**
+ * Creates an account. Sign-up is disabled, so this is how every agent and admin after the
+ * seeded one comes to exist.
+ *
+ * `sortOrder` is deliberately not set: its sequence default puts the new row at the end of
+ * whatever order an admin has already arranged, which is where a brand new colleague
+ * belongs. The response is the created row in list shape, so the client can show it without
+ * waiting for a refetch.
+ */
+usersRouter.post("/", async (req, res) => {
+  const result = validate(createUserSchema, req.body, res);
+  if (!result.ok) return;
+
+  const { email } = result.data;
+
+  const duplicate = () => {
+    res.status(409).json({ error: `${email} already has an account.` });
+  };
+
+  // Checked up front so the ordinary case — an address that is already in the list — is
+  // answered by name, rather than by the constraint failure, which surfaces from inside
+  // Better Auth's adapter attached to no particular field.
+  const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+
+  if (existing) {
+    duplicate();
+    return;
+  }
+
+  try {
+    const user = await createUserWithPassword(result.data);
+    res.status(201).json(user);
+  } catch (error) {
+    // Two admins submitting the same address at once: the check above passed for both and
+    // the unique index caught the loser. That is the same answer, not a 500.
+    if (!isUniqueViolation(error)) throw error;
+
+    duplicate();
+  }
 });
 
 /**

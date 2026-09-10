@@ -108,10 +108,25 @@ The client proxies `/api/*` requests to the server via Vite config (target is co
   renders, the server guard is the boundary.
 - **Endpoints** (`server/src/routes/users.ts`):
   - `GET /api/users` — every user, ordered by `sortOrder` then `createdAt`.
+  - `POST /api/users` — body `createUserSchema` (name, email, password, role). Creates a
+    credential account through `lib/create-user.ts` and answers 201 with the new row in
+    list shape. A duplicate address is a 409, checked up front and again on the unique
+    index so a race answers the same way. `sortOrder` is left to its default so the new
+    account lands at the end of the arranged list.
   - `PATCH /api/users/order` — body `{ ids: string[] }`, the *whole* list in its new order.
     Answers 409 if that set no longer matches the table, so a client holding a stale list
     refetches instead of writing positions for rows that no longer exist. Runs in a
     transaction that locks the user rows, so two admins reordering at once serialise.
+- **Creating a user** is `client/src/components/users/CreateUserSheet.tsx` — a right-hand
+  Sheet behind the "New user" button in the page header. `createUserSchema`
+  (`core/schemas/users.ts`) validates on both sides, and its `.trim()`/`.toLowerCase()` on
+  email mean the form's values and the API's differ: the form is typed
+  `useForm<CreateUserValues, unknown, CreateUserInput>` so `handleSubmit` hands on the
+  transformed output. The panel refuses to dismiss while the request is in flight.
+- **`lib/create-user.ts`** (`createUserWithPassword`) is the only path that produces an
+  account that can sign in — shared by the route and both seeds. It deletes the user row if
+  linking the credential fails, since `internalAdapter` takes no transaction and a user
+  without one can never sign in *and* holds its address against a retry.
 - **`User.sortOrder`** is `Int @default(autoincrement())`, not a constant default: a user
   created after an admin has arranged the list has to land at the end of it. A reorder
   renumbers rows densely and then `setval`s the sequence past the new maximum, or the next
@@ -134,7 +149,8 @@ The client proxies `/api/*` requests to the server via Vite config (target is co
 - **Role guard (server)**: `server/src/middleware/require-role.ts` — `requireRole(Role.Admin)`, mounted after `requireAuth` on admin-only routes. Client guards like `AdminRoute` decide what the browser shows and are not an access boundary
 - **Route protection (client)**: `ProtectedRoute` component wraps authenticated routes; redirects to `/login` if unauthenticated
 - **Admin route protection (client)**: `AdminRoute` component wraps admin-only routes; redirects non-admins to `/`
-- **Sign-up is disabled** — users are seeded via `prisma/seed.ts`
+- **Sign-up is disabled** — the first admin is seeded via `prisma/seed.ts`, and every
+  account after it is created by an admin through `POST /api/users`
 - **User roles**: `admin` and `agent` (defined as Prisma enum, default `agent`)
 - **Rate limiting**: two layers. Better Auth's own limiter covers `/api/auth/*` only — on in every environment (`rateLimit: { enabled: true }`), 3 sign-ins per 10s and 100 other auth calls per 10s, with counters in Postgres (`storage: "database"` — the `RateLimit` model) so they survive restarts and are shared across replicas. `server/src/middleware/rate-limit.ts` covers the rest: `apiLimiter` (300/min per IP on `/api`) and `authLimiter` (120/min on `/api/auth`), in-memory and per-process — burst ceilings, not credential counters. Both key on `req.ip`, and the IP Better Auth sees comes from the `x-client-ip` header `middleware/client-ip.ts` stamps, never a caller-supplied `X-Forwarded-For`. Set `TRUST_PROXY` (hop count, address list, or a preset — `true` is refused) when a proxy fronts the API
 
@@ -165,8 +181,11 @@ browser and a real server are the point.
 - `makeUser` / `makeUsers` (`@/test/fixtures`) — build `UserListItem`s with every field
   defaulted, so a test names only what it is about. `makeUsers` assigns `id` and `sortOrder`
   by position.
-- `setup.ts` stubs `matchMedia`, `IntersectionObserver` and `ResizeObserver`. jsdom has
-  none, and embla (behind `BrandPanel`, which `LoginPage` renders) crashes without them.
+- `setup.ts` stubs `matchMedia`, `IntersectionObserver`, `ResizeObserver` and
+  `PointerEvent`. jsdom has none. The first three are for embla (behind `BrandPanel`, which
+  `LoginPage` renders), which crashes without them; `PointerEvent` is for Base UI's Radio,
+  which re-dispatches a click as one and would otherwise throw before the radio ever
+  checks.
 
 **Mocking, in order of preference — mock the boundary, not the app:**
 
@@ -206,9 +225,9 @@ than none. This has caught two vacuous tests here — both looked correct on rev
 empty, error, and the disabled or in-flight variants. Those branches are where the bugs are
 and they are cheap to reach with a mock.
 
-**Existing suites** (79 tests): `LoginPage` (inputs, validation, submit, redirects),
+**Existing suites** (91 tests): `LoginPage` (inputs, validation, submit, redirects),
 `UserRow`, `UsersPage`, `ErrorAlert`, `ProtectedRoute` (covers `AdminRoute`), `Navbar`,
-`UsersTable`, `use-users`, `lib/reorder`.
+`UsersTable`, `CreateUserSheet`, `use-users`, `lib/reorder`.
 
 **Deliberately untested**: `Logo`, `AppLayout`, `RouteSpinner`, `ErrorMessage` — presentational
 with no branching, so a test would restate the JSX. `BrandPanel` needs real layout. `HomePage`

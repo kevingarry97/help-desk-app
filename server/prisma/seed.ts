@@ -1,6 +1,6 @@
 import { prisma } from "../src/db";
 import { UserRole } from "../generated/prisma/enums";
-import { createUserWithPassword } from "./create-user";
+import { createUserWithPassword } from "../src/lib/create-user";
 
 const email = process.env.ADMIN_EMAIL?.toLowerCase();
 const password = process.env.ADMIN_PASSWORD;

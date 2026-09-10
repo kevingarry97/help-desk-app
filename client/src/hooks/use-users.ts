@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { UserListItem } from "core/schemas/users";
+import type { CreateUserInput, UserListItem } from "core/schemas/users";
 
 import { api } from "@/lib/api";
 import { applyOrder } from "@/lib/reorder";
@@ -12,6 +12,30 @@ export function useUsers() {
     queryFn: async ({ signal }) => {
       const { data } = await api.get<UserListItem[]>("/users", { signal });
       return data;
+    },
+  });
+}
+
+export function useCreateUser() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: CreateUserInput) => {
+      const { data } = await api.post<UserListItem>("/users", input);
+      return data;
+    },
+
+    onSuccess: (user) => {
+      // Appended rather than refetched-and-replaced, so the row is on screen the instant
+      // the sheet closes. A new account carries the highest sortOrder, so the end of the
+      // list is exactly where the server will put it too.
+      queryClient.setQueryData<UserListItem[]>(usersQueryKey, (previous) =>
+        previous ? [...previous, user] : undefined,
+      );
+
+      // Still refetched: the append is a guess about one row, and anything else that
+      // changed since the list was fetched should come back with it.
+      void queryClient.invalidateQueries({ queryKey: usersQueryKey });
     },
   });
 }
