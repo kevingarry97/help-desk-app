@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { UserListItem } from "core/schemas/users";
 
 import UserRow from "@/components/users/UserRow";
@@ -8,18 +9,29 @@ import { makeUser } from "@/test/fixtures";
 import { DndContext } from "@dnd-kit/core";
 import { SortableContext } from "@dnd-kit/sortable";
 
-function renderRow(overrides: Partial<UserListItem> = {}, position = 1) {
+function renderRow(
+  overrides: Partial<UserListItem> = {},
+  position = 1,
+  onEdit = vi.fn(),
+) {
   const item = makeUser(overrides);
 
-  return render(
+  const view = render(
     <DndContext>
       <SortableContext items={[item.id]}>
         <ul>
-          <UserRow user={item} position={position} disabled={false} />
+          <UserRow
+            user={item}
+            position={position}
+            disabled={false}
+            onEdit={onEdit}
+          />
         </ul>
       </SortableContext>
     </DndContext>,
   );
+
+  return { ...view, item, onEdit };
 }
 
 describe("UserRow", () => {
@@ -114,5 +126,28 @@ describe("UserRow", () => {
     renderRow({}, 3);
 
     expect(screen.getByText("3")).toBeInTheDocument();
+  });
+
+  it("names its edit button for the user, so it is distinguishable from the other rows", () => {
+    renderRow({ name: "Grace Hopper" });
+
+    expect(screen.getByRole("button", { name: "Edit Grace Hopper" })).toBeInTheDocument();
+  });
+
+  it("hands the row's user to onEdit", async () => {
+    const { item, onEdit } = renderRow();
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "Edit Ada Lovelace" }));
+
+    expect(onEdit).toHaveBeenCalledExactlyOnceWith(item);
+  });
+
+  it("does not start editing when the drag handle is pressed", async () => {
+    const { onEdit } = renderRow();
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "Reorder Ada Lovelace" }));
+
+    expect(screen.getByRole("button", { name: "Edit Ada Lovelace" })).toBeInTheDocument();
+    expect(onEdit).not.toHaveBeenCalled();
   });
 });

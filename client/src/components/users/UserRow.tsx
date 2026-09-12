@@ -1,16 +1,17 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical } from "lucide-react";
+import { GripVertical, Pencil } from "lucide-react";
 import { cn } from "cn";
 import type { UserListItem } from "core/schemas/users";
 import { Role } from "core/constants/role";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 /** Shared by the header and every row so the columns line up. */
 export const USER_GRID =
-  "grid grid-cols-[2rem_2rem_minmax(0,1fr)_5.5rem] items-center gap-3 px-4 sm:grid-cols-[2rem_2.25rem_minmax(0,1fr)_6rem_7rem] sm:gap-4 sm:px-5";
+  "grid grid-cols-[2rem_2rem_minmax(0,1fr)_5.5rem_2rem] items-center gap-3 px-4 sm:grid-cols-[2rem_2.25rem_minmax(0,1fr)_6rem_7rem_2rem] sm:gap-4 sm:px-5";
 
 function initials(name: string): string {
   const letters = name
@@ -40,9 +41,10 @@ type Props = {
   position: number;
   /** Blocks a new drag from starting while the last one is still saving. */
   disabled: boolean;
+  onEdit: (user: UserListItem) => void;
 };
 
-export default function UserRow({ user, position, disabled }: Props) {
+export default function UserRow({ user, position, disabled, onEdit }: Props) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
     useSortable({ id: user.id, disabled });
 
@@ -123,6 +125,16 @@ export default function UserRow({ user, position, disabled }: Props) {
       <span className="hidden text-sm text-muted-foreground sm:block">
         {formatJoined(user.createdAt)}
       </span>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={`Edit ${user.name}`}
+        onClick={() => onEdit(user)}
+        className="text-muted-foreground"
+      >
+        <Pencil />
+      </Button>
     </li>
   );
 }

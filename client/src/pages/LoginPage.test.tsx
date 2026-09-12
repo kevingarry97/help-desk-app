@@ -5,8 +5,6 @@ import { MemoryRouter, Route, Routes } from "react-router";
 
 import LoginPage from "@/pages/LoginPage";
 
-// Only the auth client is mocked. The router runs for real, so redirects are exercised
-// rather than asserted against a spy that could drift from what react-router does.
 vi.mock("@/lib/auth-client", () => ({
   signIn: { email: vi.fn() },
   useSession: vi.fn(),

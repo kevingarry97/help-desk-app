@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import UsersTable from "@/components/users/UsersTable";
 import { makeUsers } from "@/test/fixtures";
 
@@ -11,7 +12,13 @@ const USERS = makeUsers(
 
 function renderTable(props: Partial<React.ComponentProps<typeof UsersTable>> = {}) {
   return render(
-    <UsersTable users={USERS} onReorder={vi.fn()} isSaving={false} {...props} />,
+    <UsersTable
+      users={USERS}
+      onReorder={vi.fn()}
+      isSaving={false}
+      onEdit={vi.fn()}
+      {...props}
+    />,
   );
 }
 
@@ -69,5 +76,15 @@ describe("UsersTable", () => {
       expect(handle).toHaveAttribute("aria-disabled", "true");
       expect(handle).not.toBeDisabled();
     });
+  });
+
+  it("passes the chosen row's user to onEdit", async () => {
+    const user = userEvent.setup();
+    const onEdit = vi.fn();
+    renderTable({ onEdit });
+
+    await user.click(screen.getByRole("button", { name: "Edit Alan Turing" }));
+
+    expect(onEdit).toHaveBeenCalledExactlyOnceWith(USERS[2]);
   });
 });

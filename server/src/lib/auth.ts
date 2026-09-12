@@ -22,9 +22,6 @@ if (secret.length < 32) {
   );
 }
 
-// Asserted for the same reason as the secret: Better Auth falls back to deriving the
-// session cookie's Secure flag from this URL's scheme, so a missing or http:// value
-// silently ships the session token over plaintext.
 const baseURL = process.env.BETTER_AUTH_URL;
 
 if (!baseURL) {
@@ -46,8 +43,6 @@ const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 const isLocal = LOCAL_HOSTNAMES.has(parsedBaseURL.hostname);
 const useSecureCookies = parsedBaseURL.protocol === "https:";
 
-// Deliberately not keyed off NODE_ENV: a deployment that forgets to change it would
-// otherwise hand out non-Secure cookies without a word.
 if (!isLocal && !useSecureCookies) {
   throw new Error(
     `BETTER_AUTH_URL is "${baseURL}". Any non-local host must be https:// — the session ` +
@@ -66,21 +61,10 @@ export const auth = betterAuth({
     },
   },
 
-  // storage "database" rather than the default "memory": in-process counters reset on
-  // every `bun --hot` reload and every deploy, and would be per-replica behind a load
-  // balancer — a brute-force budget that resets itself is not a limit.
   rateLimit: { enabled: true, storage: "database" },
-  // Better Auth calls this once at context creation with no request — which `bun run
-  // db:seed` triggers, and seeding has no HTTP layer to configure origins for — and then
-  // again for every request. Resolving only in the request case keeps the invariant where
-  // it counts: a deployment with no CORS_ORIGINS fails loudly on the first call instead of
-  // quietly running with a CSRF allowlist containing nothing but BETTER_AUTH_URL.
   trustedOrigins: (request) => (request ? getAllowedOrigins() : []),
   advanced: {
     useSecureCookies,
-    // Read only the header middleware/client-ip.ts writes. The default is
-    // `x-forwarded-for`, which is caller-controlled and makes the limiter's per-IP
-    // buckets trivially skippable.
     ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] },
   },
 });

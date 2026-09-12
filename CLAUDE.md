@@ -48,7 +48,7 @@ The client proxies `/api/*` requests to the server via Vite config (target is co
 - Use Zod for validation (import from `zod/v4`)
 - Validate request bodies in route handlers using the shared `validate` helper (`import { validate } from "../lib/validate"`). It takes a Zod schema, the request body, and the `res` object — returns `{ ok: true, data }`, or `{ ok: false }` after sending a 400 response. Bail with `if (!result.ok) return;`.
 - Parse and validate numeric ID route params with the shared `parseId` helper (`import { parseId } from "../lib/parse-id"`). Returns a positive integer or `null` for invalid values.
-- Do not wrap async route handlers in try/catch — Express 5 automatically catches rejected promises
+- Do not wrap async route handlers in try/catch — Express 5 automatically catches rejected promises and forwards them to `errorHandler` (`server/src/middleware/error-handler.ts`). That includes errors you expect: a Prisma unique violation (P2002) is answered there as a 409, so let it throw. Handle the ordinary case with a check up front when the response should say something specific (e.g. `POST /api/users` answers a known duplicate email by name)
 - Use the shared `Role` constant instead of hardcoded `"admin"` / `"agent"` strings (import from `core/constants/role.ts`, e.g. `import { Role } from "core/constants/role.ts"`)
 - Define shared constants and domain types in `core/constants/` as union types (not `enum` — the client has `erasableSyntaxOnly` enabled). Use `as const` objects when runtime access is needed (e.g. `Role`), and plain union types when only type checking is needed (e.g. `type TicketStatus = "open" | "resolved" | "closed"`).
 - Use React Hook Form with Zod resolver for client-side form validation (`useForm` + `zodResolver` from `@hookform/resolvers/zod`)
@@ -110,19 +110,37 @@ The client proxies `/api/*` requests to the server via Vite config (target is co
   - `GET /api/users` — every user, ordered by `sortOrder` then `createdAt`.
   - `POST /api/users` — body `createUserSchema` (name, email, password, role). Creates a
     credential account through `lib/create-user.ts` and answers 201 with the new row in
-    list shape. A duplicate address is a 409, checked up front and again on the unique
-    index so a race answers the same way. `sortOrder` is left to its default so the new
+    list shape. A duplicate address is a 409, checked up front (with the address named in
+    the message) and again on the unique index — a race lets the violation throw, and
+    `errorHandler` answers it as a plain 409 `Conflict`. `sortOrder` is left to its default so the new
     account lands at the end of the arranged list.
   - `PATCH /api/users/order` — body `{ ids: string[] }`, the *whole* list in its new order.
     Answers 409 if that set no longer matches the table, so a client holding a stale list
     refetches instead of writing positions for rows that no longer exist. Runs in a
     transaction that locks the user rows, so two admins reordering at once serialise.
+  - `PATCH /api/users/:id` — body `updateUserSchema` (name, email, role — `createUserSchema`
+    without the password; there is no way to change a password yet). Answers the updated row
+    in list shape. 403 if an admin tries to take away their own admin role, 409 (named) if
+    the email belongs to someone else, 404 if the user is gone.
+  - `DELETE /api/users/:id` — 204. Sessions and the credential account go with the row
+    (`onDelete: Cascade`). 403 if an admin tries to delete themselves, 404 if already gone.
+  - Both run in a `$transaction` that locks the target and every admin row
+    (`lockUserAndAdmins`) and refuse with 409 if the change would leave no admin. With the
+    self-guards that can only happen when two admins demote or delete each other at the same
+    moment; the lock makes the second request see the first one's result.
 - **Creating a user** is `client/src/components/users/CreateUserSheet.tsx` — a right-hand
   Sheet behind the "New user" button in the page header. `createUserSchema`
   (`core/schemas/users.ts`) validates on both sides, and its `.trim()`/`.toLowerCase()` on
   email mean the form's values and the API's differ: the form is typed
   `useForm<CreateUserValues, unknown, CreateUserInput>` so `handleSubmit` hands on the
   transformed output. The panel refuses to dismiss while the request is in flight.
+- **Editing and deleting**: each row has an `Edit <name>` button that opens
+  `EditUserSheet.tsx`. **Delete user** lives in that sheet's footer and opens
+  `DeleteUserDialog.tsx` (an AlertDialog) to confirm. On the signed-in admin's own account the
+  role picker is disabled and Delete is not offered — `UsersPage` compares against
+  `useSession()`; the server enforces the same rules. Both panels refuse to dismiss while
+  their request is in flight. The role picker is shared with the create sheet
+  (`RoleRadioGroup.tsx`).
 - **`lib/create-user.ts`** (`createUserWithPassword`) is the only path that produces an
   account that can sign in — shared by the route and both seeds. It deletes the user row if
   linking the credential fails, since `internalAdapter` takes no transaction and a user
@@ -186,6 +204,10 @@ browser and a real server are the point.
   `LoginPage` renders), which crashes without them; `PointerEvent` is for Base UI's Radio,
   which re-dispatches a click as one and would otherwise throw before the radio ever
   checks.
+- **Base UI's Menu (shadcn `dropdown-menu`) hangs Vitest under jsdom.** Once the menu opens,
+  something spins synchronously, so no test timeout fires and the run never ends
+  (`modal={false}` doesn't help). `userEvent.click` doesn't open it at all. That is why the
+  user rows use plain buttons; if you need a menu, fix or mock this first.
 
 **Mocking, in order of preference — mock the boundary, not the app:**
 
@@ -225,9 +247,10 @@ than none. This has caught two vacuous tests here — both looked correct on rev
 empty, error, and the disabled or in-flight variants. Those branches are where the bugs are
 and they are cheap to reach with a mock.
 
-**Existing suites** (91 tests): `LoginPage` (inputs, validation, submit, redirects),
+**Existing suites** (121 tests): `LoginPage` (inputs, validation, submit, redirects),
 `UserRow`, `UsersPage`, `ErrorAlert`, `ProtectedRoute` (covers `AdminRoute`), `Navbar`,
-`UsersTable`, `CreateUserSheet`, `use-users`, `lib/reorder`.
+`UsersTable`, `CreateUserSheet`, `EditUserSheet`, `DeleteUserDialog`, `use-users`,
+`lib/reorder`.
 
 **Deliberately untested**: `Logo`, `AppLayout`, `RouteSpinner`, `ErrorMessage` — presentational
 with no branching, so a test would restate the JSX. `BrandPanel` needs real layout. `HomePage`

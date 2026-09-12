@@ -1,5 +1,7 @@
 import type { ErrorRequestHandler } from "express";
 
+import { isUniqueViolation } from "../lib/prisma-errors";
+
 const STATUS_TEXT: Record<number, string> = {
   400: "Bad request",
   401: "Unauthorized",
@@ -41,7 +43,9 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
     return;
   }
 
-  const status = statusOf(err);
+  // A unique-constraint race — two requests creating the same row at once — is the caller's
+  // conflict, not a server fault. Routes let it throw rather than catching it themselves.
+  const status = isUniqueViolation(err) ? 409 : statusOf(err);
 
   if (status >= 500) {
     console.error(err);

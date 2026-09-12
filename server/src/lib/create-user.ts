@@ -10,14 +10,7 @@ type NewUser = {
   role: UserRole;
 };
 
-/**
- * Creates a credential account the way Better Auth expects, then sets its role.
- *
- * Sign-up is disabled, so this is the only path that produces a usable account — shared by
- * the admin create endpoint (routes/users.ts), the dev/prod seed (prisma/seed.ts) and the
- * E2E seed (prisma/seed-test.ts) rather than duplicated, since getting the account linkage
- * wrong fails at sign-in rather than here.
- */
+
 export async function createUserWithPassword({ email, password, name, role }: NewUser) {
   const ctx = await auth.$context;
   const hash = await ctx.password.hash(password);
@@ -35,10 +28,6 @@ export async function createUserWithPassword({ email, password, name, role }: Ne
       password: hash,
     });
   } catch (error) {
-    // The user row is already written and the credential is the half that makes it usable.
-    // Left behind, it would sit in the admin list as an account nobody can sign in to and
-    // whose address is now taken, so a second attempt fails as a duplicate. Not a
-    // transaction: internalAdapter runs its own queries and takes no client.
     await prisma.user.delete({ where: { id: user.id } }).catch((cleanupError) => {
       console.error(`Failed to remove half-created user ${user.id}:`, cleanupError);
     });

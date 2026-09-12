@@ -8,11 +8,11 @@ import { Role } from "core/constants/role";
 
 import ErrorAlert from "@/components/ErrorAlert";
 import ErrorMessage from "@/components/ErrorMessage";
+import RoleRadioGroup from "@/components/users/RoleRadioGroup";
 import { useCreateUser } from "@/hooks/use-users";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Sheet,
   SheetContent,
@@ -22,19 +22,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-
-const ROLE_OPTIONS = [
-  {
-    value: Role.Agent,
-    label: "Agent",
-    hint: "Works the ticket queue.",
-  },
-  {
-    value: Role.Admin,
-    label: "Admin",
-    hint: "Everything an agent can do, plus managing this list.",
-  },
-] as const;
 
 const EMPTY_FORM: CreateUserValues = {
   name: "",
@@ -207,48 +194,13 @@ export default function CreateUserSheet() {
                 control={control}
                 name="role"
                 render={({ field }) => (
-                  <RadioGroup
-                    aria-labelledby="new-user-role-label"
+                  <RoleRadioGroup
+                    idPrefix="new-user-role"
+                    labelledBy="new-user-role-label"
                     value={field.value}
-                    onValueChange={(value) => field.onChange(value)}
+                    onValueChange={field.onChange}
                     onBlur={field.onBlur}
-                  >
-                    {ROLE_OPTIONS.map((option) => {
-                      const id = `new-user-role-${option.value}`;
-
-                      return (
-                        // The whole card is the label, so the hint is part of the hit
-                        // target rather than dead space beside the dot.
-                        <Label
-                          key={option.value}
-                          htmlFor={id}
-                          className="items-start gap-3 rounded-lg border border-input p-3 transition-colors hover:bg-muted/50 has-data-checked:border-primary has-data-checked:bg-muted/40"
-                        >
-                          {/* Named by the option's own text rather than by the wrapping
-                              label: a radio built on a button takes its accessible name
-                              from its contents, and its contents are the indicator dot. */}
-                          <RadioGroupItem
-                            id={id}
-                            value={option.value}
-                            aria-labelledby={`${id}-label`}
-                            aria-describedby={`${id}-hint`}
-                            className="mt-0.5"
-                          />
-                          <span className="grid gap-0.5">
-                            <span id={`${id}-label`} className="font-medium">
-                              {option.label}
-                            </span>
-                            <span
-                              id={`${id}-hint`}
-                              className="text-xs font-normal text-muted-foreground"
-                            >
-                              {option.hint}
-                            </span>
-                          </span>
-                        </Label>
-                      );
-                    })}
-                  </RadioGroup>
+                  />
                 )}
               />
               <ErrorMessage message={errors.role?.message} />

@@ -1,11 +1,28 @@
+import { useState } from "react";
 import { Users } from "lucide-react";
+import type { UserListItem } from "core/schemas/users";
 
 import ErrorAlert from "@/components/ErrorAlert";
 import CreateUserSheet from "@/components/users/CreateUserSheet";
+import DeleteUserDialog from "@/components/users/DeleteUserDialog";
+import EditUserSheet from "@/components/users/EditUserSheet";
 import UsersTable from "@/components/users/UsersTable";
 import { USER_GRID } from "@/components/users/UserRow";
 import { useReorderUsers, useUsers } from "@/hooks/use-users";
+import { useSession } from "@/lib/auth-client";
 import { Skeleton } from "@/components/ui/skeleton";
+
+function useUserDialog() {
+  const [user, setUser] = useState<UserListItem | null>(null);
+  const [open, setOpen] = useState(false);
+
+  const show = (next: UserListItem) => {
+    setUser(next);
+    setOpen(true);
+  };
+
+  return { user, open, show, setOpen };
+}
 
 function TableSkeleton() {
   return (
@@ -24,6 +41,7 @@ function TableSkeleton() {
           </div>
           <Skeleton className="h-5 w-16 rounded-full" />
           <Skeleton className="hidden h-3.5 w-20 sm:block" />
+          <Skeleton className="size-7 rounded-md" />
         </div>
       ))}
     </div>
@@ -45,6 +63,9 @@ function EmptyState() {
 export default function UsersPage() {
   const { data: users, isPending, isError, error } = useUsers();
   const reorder = useReorderUsers();
+  const { data: session } = useSession();
+  const editing = useUserDialog();
+  const deleting = useUserDialog();
 
   return (
     <>
@@ -86,9 +107,24 @@ export default function UsersPage() {
               users={users}
               onReorder={(ids) => reorder.mutate(ids)}
               isSaving={reorder.isPending}
+              onEdit={editing.show}
             />
           ))}
       </div>
+
+      <EditUserSheet
+        user={editing.user}
+        open={editing.open}
+        isSelf={editing.user?.id === session?.user.id}
+        onOpenChange={editing.setOpen}
+        onDelete={deleting.show}
+      />
+
+      <DeleteUserDialog
+        user={deleting.user}
+        open={deleting.open}
+        onOpenChange={deleting.setOpen}
+      />
     </>
   );
 }

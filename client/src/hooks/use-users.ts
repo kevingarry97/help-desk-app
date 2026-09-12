@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { CreateUserInput, UserListItem } from "core/schemas/users";
+import type { CreateUserInput, UpdateUserInput, UserListItem } from "core/schemas/users";
 
 import { api } from "@/lib/api";
 import { applyOrder } from "@/lib/reorder";
@@ -35,6 +35,43 @@ export function useCreateUser() {
 
       // Still refetched: the append is a guess about one row, and anything else that
       // changed since the list was fetched should come back with it.
+      void queryClient.invalidateQueries({ queryKey: usersQueryKey });
+    },
+  });
+}
+
+export function useUpdateUser() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, ...input }: UpdateUserInput & { id: string }) => {
+      const { data } = await api.patch<UserListItem>(`/users/${id}`, input);
+      return data;
+    },
+
+    onSuccess: (user) => {
+      queryClient.setQueryData<UserListItem[]>(usersQueryKey, (previous) =>
+        previous?.map((existing) => (existing.id === user.id ? user : existing)),
+      );
+
+      void queryClient.invalidateQueries({ queryKey: usersQueryKey });
+    },
+  });
+}
+
+export function useDeleteUser() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/users/${id}`);
+    },
+
+    onSuccess: (_data, id) => {
+      queryClient.setQueryData<UserListItem[]>(usersQueryKey, (previous) =>
+        previous?.filter((user) => user.id !== id),
+      );
+
       void queryClient.invalidateQueries({ queryKey: usersQueryKey });
     },
   });

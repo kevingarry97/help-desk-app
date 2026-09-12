@@ -3,12 +3,12 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import axios from "axios";
 import type { UserListItem } from "core/schemas/users";
 
-import { useReorderUsers, usersQueryKey } from "@/hooks/use-users";
+import { useDeleteUser, useReorderUsers, useUpdateUser, usersQueryKey } from "@/hooks/use-users";
 import { makeUsers } from "@/test/fixtures";
 import { createQueryWrapper } from "@/test/render";
 
 vi.mock("axios", () => {
-  const instance = { get: vi.fn(), patch: vi.fn() };
+  const instance = { get: vi.fn(), patch: vi.fn(), delete: vi.fn() };
   return { default: { create: vi.fn(() => instance) } };
 });
 
@@ -28,6 +28,7 @@ function setup() {
 
 beforeEach(() => {
   vi.mocked(api.patch).mockReset();
+  vi.mocked(api.delete).mockReset();
 });
 
 describe("useReorderUsers", () => {
@@ -73,5 +74,63 @@ describe("useReorderUsers", () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(cachedIds()).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("useUpdateUser", () => {
+  it("patches that user and swaps the saved row into the list where it already was", async () => {
+    const saved = { ...USERS[1]!, name: "Grace Hopper" };
+    vi.mocked(api.patch).mockResolvedValue({ data: saved });
+
+    const { queryClient, Wrapper } = createQueryWrapper();
+    queryClient.setQueryData(usersQueryKey, USERS);
+    const { result } = renderHook(() => useUpdateUser(), { wrapper: Wrapper });
+
+    act(() =>
+      result.current.mutate({ id: "b", name: "Grace Hopper", email: saved.email, role: "agent" }),
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(api.patch).toHaveBeenCalledWith("/users/b", {
+      name: "Grace Hopper",
+      email: saved.email,
+      role: "agent",
+    });
+
+    const cached = queryClient.getQueryData<UserListItem[]>(usersQueryKey);
+    expect(cached?.map((u) => u.id)).toEqual(["a", "b", "c"]);
+    expect(cached?.[1]?.name).toBe("Grace Hopper");
+  });
+});
+
+describe("useDeleteUser", () => {
+  it("deletes that user and drops the row from the list", async () => {
+    vi.mocked(api.delete).mockResolvedValue({ data: "" });
+
+    const { queryClient, Wrapper } = createQueryWrapper();
+    queryClient.setQueryData(usersQueryKey, USERS);
+    const { result } = renderHook(() => useDeleteUser(), { wrapper: Wrapper });
+
+    act(() => result.current.mutate("b"));
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(api.delete).toHaveBeenCalledWith("/users/b");
+    expect(queryClient.getQueryData<UserListItem[]>(usersQueryKey)?.map((u) => u.id)).toEqual([
+      "a",
+      "c",
+    ]);
+  });
+
+  it("leaves the list alone when the delete fails", async () => {
+    vi.mocked(api.delete).mockRejectedValue({ response: { status: 409, data: {} } });
+
+    const { queryClient, Wrapper } = createQueryWrapper();
+    queryClient.setQueryData(usersQueryKey, USERS);
+    const { result } = renderHook(() => useDeleteUser(), { wrapper: Wrapper });
+
+    act(() => result.current.mutate("b"));
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(queryClient.getQueryData<UserListItem[]>(usersQueryKey)).toHaveLength(3);
   });
 });

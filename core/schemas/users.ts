@@ -12,14 +12,6 @@ export const userListItemSchema = z.object({
   sortOrder: z.number().int(),
 });
 
-/**
- * A new account, as an admin fills it in. Sign-up is disabled, so every account is created
- * for someone else: the password here is one the admin types and hands over, not one its
- * owner chose.
- *
- * Shared by the form and the route, so the message a field shows before the request is the
- * same rule the server enforces after it.
- */
 export const createUserSchema = z.object({
   name: z
     .string()
@@ -30,20 +22,16 @@ export const createUserSchema = z.object({
     .string()
     .trim()
     .toLowerCase()
-    // Normalised before the format check rather than after it: a pasted " Ada@Example.com "
-    // is a valid address wearing whitespace, not an invalid one. The lowercasing is not
-    // cosmetic either — the unique index on email is case-sensitive, so without it
-    // Ada@x.com and ada@x.com are two accounts for one person.
     .max(254, "Email must be 254 characters or fewer")
     .pipe(z.email("Enter a valid email address")),
-  // Better Auth's own bounds. Lower and it would reject the account after the user row was
-  // already written; higher and bcrypt would silently ignore the tail of the password.
   password: z
     .string()
     .min(8, "Use at least 8 characters")
     .max(128, "Password must be 128 characters or fewer"),
   role: z.enum(Role, { error: "Choose a role" }),
 });
+
+export const updateUserSchema = createUserSchema.omit({ password: true });
 
 export const reorderUsersSchema = z.object({
   ids: z
@@ -56,8 +44,8 @@ export const reorderUsersSchema = z.object({
 });
 
 export type UserListItem = z.infer<typeof userListItemSchema>;
-/** What the route receives and the mutation sends — trimmed, lowercased. */
 export type CreateUserInput = z.output<typeof createUserSchema>;
-/** What the form holds while it is being typed, before those transforms run. */
 export type CreateUserValues = z.input<typeof createUserSchema>;
+export type UpdateUserInput = z.output<typeof updateUserSchema>;
+export type UpdateUserValues = z.input<typeof updateUserSchema>;
 export type ReorderUsersInput = z.infer<typeof reorderUsersSchema>;

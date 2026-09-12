@@ -26,9 +26,10 @@ type Props = {
   onReorder: (ids: string[]) => void;
   /** True while a reorder is in flight — dragging again would race it. */
   isSaving: boolean;
+  onEdit: (user: UserListItem) => void;
 };
 
-export default function UsersTable({ users, onReorder, isSaving }: Props) {
+export default function UsersTable({ users, onReorder, isSaving, onEdit }: Props) {
   const sensors = useSensors(
     // A few pixels of travel before a drag starts, so clicking or focusing the handle
     // does not register as one.
@@ -90,6 +91,7 @@ export default function UsersTable({ users, onReorder, isSaving }: Props) {
           <span>User</span>
           <span>Role</span>
           <span className="hidden sm:block">Joined</span>
+          <span aria-hidden="true" />
         </div>
 
         <SortableContext items={ids} strategy={verticalListSortingStrategy}>
@@ -103,6 +105,7 @@ export default function UsersTable({ users, onReorder, isSaving }: Props) {
                 user={user}
                 position={index + 1}
                 disabled={isSaving}
+                onEdit={onEdit}
               />
             ))}
           </ul>
