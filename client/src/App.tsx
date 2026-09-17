@@ -5,6 +5,8 @@ import AppLayout from "@/components/AppLayout";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import LoginPage from "@/pages/LoginPage";
 import HomePage from "@/pages/HomePage";
+import TicketDetailPage from "@/pages/TicketDetailPage";
+import TicketsPage from "@/pages/TicketsPage";
 import UsersPage from "@/pages/UsersPage";
 
 export function App() {
@@ -14,6 +16,8 @@ export function App() {
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
           <Route path="/" element={<HomePage />} />
+          <Route path="/tickets" element={<TicketsPage />} />
+          <Route path="/tickets/:id" element={<TicketDetailPage />} />
           <Route element={<AdminRoute />}>
             <Route path="/users" element={<UsersPage />} />
           </Route>

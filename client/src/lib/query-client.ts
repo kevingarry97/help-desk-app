@@ -6,7 +6,8 @@ export const queryClient = new QueryClient({
       staleTime: 30_000,
       retry: (failureCount, error) => {
         const status = (error as { response?: { status?: number } })?.response?.status;
-        if (status === 401 || status === 403) return false;
+        // Asking again will not change the answer: signed out, not allowed, or not there.
+        if (status === 401 || status === 403 || status === 404) return false;
         return failureCount < 2;
       },
     },

@@ -40,6 +40,19 @@ describe("Navbar", () => {
     expect(screen.getByText("admin")).toBeInTheDocument();
   });
 
+  describe("the Tickets link", () => {
+    it.each([
+      ["an agent", asAgent],
+      ["an admin", asAdmin],
+    ])("is offered to %s", (_label, session) => {
+      mockSession.mockReturnValue(session as never);
+
+      renderNavbar();
+
+      expect(screen.getByRole("link", { name: "Tickets" })).toHaveAttribute("href", "/tickets");
+    });
+  });
+
   describe("the admin-only Users link", () => {
     it("is offered to an admin", () => {
       mockSession.mockReturnValue(asAdmin as never);

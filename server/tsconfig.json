@@ -10,5 +10,5 @@
     "skipLibCheck": true,
     "types": ["bun"]
   },
-  "include": ["src", "prisma", "prisma.config.ts"]
+  "include": ["src", "prisma", "scripts", "prisma.config.ts"]
 }

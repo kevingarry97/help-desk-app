@@ -19,6 +19,47 @@
   --brand-700: #1a49c4;
   --brand-900: #10307f;
 
+  /* Ticket status — a background/foreground pair each, AA contrast (6.4:1 or better).
+     Open is amber rather than brand blue: it is the state that wants an agent, and blue
+     already means "link" and "selected" elsewhere in the app. */
+  --status-open: #fef3c7;
+  --status-open-foreground: #92400e;
+  --status-resolved: #d1fae5;
+  --status-resolved-foreground: #065f46;
+  --status-closed: #e8edf3;
+  --status-closed-foreground: #475569;
+  /* The saturated member of each family: the dot beside a status label, and the border of a
+     chosen status filter. 3.2:1 or better against the card, so a chosen filter is visible
+     without relying on its tint alone. */
+  --status-open-accent: #d97706;
+  --status-resolved-accent: #059669;
+  --status-closed-accent: #64748b;
+
+  /* Ticket category — tag tint, text, and accent (a filter's square and chosen border).
+     Hues kept clear of the status family and of brand blue; text 6.5:1 or better. */
+  --category-general: #ede9fe;
+  --category-general-foreground: #5b21b6;
+  --category-general-accent: #7c3aed;
+  --category-technical: #cffafe;
+  --category-technical-foreground: #155e75;
+  --category-technical-accent: #0891b2;
+  --category-refund: #ffe4e6;
+  --category-refund-foreground: #9f1239;
+  --category-refund-accent: #e11d48;
+
+  /* Data tables. The header band and stripe are cool tints of the canvas, so the table reads
+     as one surface with a spine; hover borrows brand-50 because a row is a link. Secondary
+     text is a darker slate than --muted-foreground, which falls under 4.5:1 on every tint
+     here (and on --surface itself). */
+  --table-header: #edf1f7;
+  --table-header-foreground: #475569;
+  --table-stripe: #f8fafc;
+  --table-row-hover: #eef3ff;
+  --table-muted-foreground: #5b6577;
+
+  /* Secondary text sitting directly on --surface (page subtitles, filter labels). */
+  --surface-muted-foreground: #5b6577;
+
   /* shadcn semantic tokens — default (neutral) theme. */
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -65,6 +106,33 @@
   --color-brand-600: var(--brand-600);
   --color-brand-700: var(--brand-700);
   --color-brand-900: var(--brand-900);
+
+  --color-status-open: var(--status-open);
+  --color-status-open-foreground: var(--status-open-foreground);
+  --color-status-resolved: var(--status-resolved);
+  --color-status-resolved-foreground: var(--status-resolved-foreground);
+  --color-status-closed: var(--status-closed);
+  --color-status-closed-foreground: var(--status-closed-foreground);
+  --color-status-open-accent: var(--status-open-accent);
+  --color-status-resolved-accent: var(--status-resolved-accent);
+  --color-status-closed-accent: var(--status-closed-accent);
+
+  --color-category-general: var(--category-general);
+  --color-category-general-foreground: var(--category-general-foreground);
+  --color-category-general-accent: var(--category-general-accent);
+  --color-category-technical: var(--category-technical);
+  --color-category-technical-foreground: var(--category-technical-foreground);
+  --color-category-technical-accent: var(--category-technical-accent);
+  --color-category-refund: var(--category-refund);
+  --color-category-refund-foreground: var(--category-refund-foreground);
+  --color-category-refund-accent: var(--category-refund-accent);
+
+  --color-table-header: var(--table-header);
+  --color-table-header-foreground: var(--table-header-foreground);
+  --color-table-stripe: var(--table-stripe);
+  --color-table-row-hover: var(--table-row-hover);
+  --color-table-muted-foreground: var(--table-muted-foreground);
+  --color-surface-muted-foreground: var(--surface-muted-foreground);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -161,11 +229,42 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  --status-open: #422006;
+  --status-open-foreground: #fcd34d;
+  --status-resolved: #052e16;
+  --status-resolved-foreground: #86efac;
+  --status-closed: #1e293b;
+  --status-closed-foreground: #cbd5e1;
+  --status-open-accent: #fbbf24;
+  --status-resolved-accent: #34d399;
+  --status-closed-accent: #94a3b8;
+
+  --category-general: #2e1065;
+  --category-general-foreground: #c4b5fd;
+  --category-general-accent: #a78bfa;
+  --category-technical: #083344;
+  --category-technical-foreground: #67e8f9;
+  --category-technical-accent: #22d3ee;
+  --category-refund: #4c0519;
+  --category-refund-foreground: #fda4af;
+  --category-refund-accent: #fb7185;
+
+  --table-header: #303338;
+  --table-header-foreground: #cbd5e1;
+  --table-stripe: #2a2a2a;
+  --table-row-hover: #1c2740;
+  --table-muted-foreground: #94a3b8;
+  /* No dark --surface-muted-foreground: --surface itself has no dark value yet. */
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
+  }
+  ::selection {
+    background-color: var(--brand-100);
+    color: var(--brand-900);
   }
   body {
     @apply bg-background text-foreground;

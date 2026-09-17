@@ -3,22 +3,17 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { prisma } from "../db";
 import { Role } from "core/constants/role";
 import { CLIENT_IP_HEADER } from "../middleware/client-ip";
+import { readSecret } from "./env";
 import { getAllowedOrigins } from "./origins";
 
 const DEFAULT_SECRET = "better-auth-secret-12345678901234567890";
-const secret = process.env.BETTER_AUTH_SECRET;
+const secret = readSecret("BETTER_AUTH_SECRET", { required: true });
 
-if (!secret || secret === DEFAULT_SECRET) {
+// Long enough to pass readSecret, but published on npm — so no secret at all.
+if (secret === DEFAULT_SECRET) {
   throw new Error(
-    "BETTER_AUTH_SECRET is missing or set to Better Auth's public default. " +
+    "BETTER_AUTH_SECRET is set to Better Auth's public default. " +
       "Generate one with `openssl rand -base64 32` and set it in server/.env.",
-  );
-}
-
-if (secret.length < 32) {
-  throw new Error(
-    `BETTER_AUTH_SECRET is ${secret.length} characters long; it must be at least 32. ` +
-      "Generate one with `openssl rand -base64 32`.",
   );
 }
 

@@ -46,7 +46,8 @@ The client proxies `/api/*` requests to the server via Vite config (target is co
 - Organize server endpoints into Express `Router` modules under `server/src/routes/` (e.g. `routes/users.ts`), mounted in `index.ts`
 - Define shared Zod schemas in the `core` package under `core/schemas/` (e.g. `core/schemas/users.ts`) and import them in both client and server (e.g. `import { createUserSchema } from "core/schemas/users"`)
 - Use Zod for validation (import from `zod/v4`)
-- Validate request bodies in route handlers using the shared `validate` helper (`import { validate } from "../lib/validate"`). It takes a Zod schema, the request body, and the `res` object — returns `{ ok: true, data }`, or `{ ok: false }` after sending a 400 response. Bail with `if (!result.ok) return;`.
+- Validate request bodies in route handlers using the shared `validate` helper (`import { validate } from "../lib/validate"`). It takes a Zod schema, the request body, and the `res` object — returns `{ ok: true, data }`, or `{ ok: false }` after sending a 400 response. Bail with `if (!result.ok) return;`. Validate query strings with the same helper and a fourth argument: `validate(schema, req.query, res, "query")`, which answers "Invalid query parameters" instead of "Invalid request body". It is the only place a validation 400 is shaped — never call `schema.safeParse(req.body)` or `schema.safeParse(req.query)` and write the 400 yourself.
+- Read secret environment variables with the shared `readSecret` helper (`import { readSecret } from "../lib/env"`), never `process.env.X` plus a hand-written length check. Call it at module load so bad config fails at boot. `readSecret("NAME", { required: true })` returns a `string` and throws if the variable is unset, empty, or shorter than 32 characters (`MIN_SECRET_LENGTH`). Without `required`, unset or empty returns `undefined` — treat that as the feature being off (e.g. the inbound email webhook answers 503) — but a set-and-short value still throws. Checks specific to one secret stay beside the call (e.g. `lib/auth.ts` refusing Better Auth's published default).
 - Parse and validate numeric ID route params with the shared `parseId` helper (`import { parseId } from "../lib/parse-id"`). Returns a positive integer or `null` for invalid values.
 - Do not wrap async route handlers in try/catch — Express 5 automatically catches rejected promises and forwards them to `errorHandler` (`server/src/middleware/error-handler.ts`). That includes errors you expect: a Prisma unique violation (P2002) is answered there as a 409, so let it throw. Handle the ordinary case with a check up front when the response should say something specific (e.g. `POST /api/users` answers a known duplicate email by name)
 - Use the shared `Role` constant instead of hardcoded `"admin"` / `"agent"` strings (import from `core/constants/role.ts`, e.g. `import { Role } from "core/constants/role.ts"`)
@@ -77,6 +78,22 @@ The client proxies `/api/*` requests to the server via Vite config (target is co
   are used by the sign-in/marketing surfaces (`LoginPage`, `BrandPanel`, `Logo`, `Navbar`,
   `ProtectedRoute`). These are brand blue while the shadcn primitives are neutral — an unresolved
   mismatch worth settling before building more screens.
+- **Ticket colour tokens**, all defined in both `:root` and `.dark`:
+  - `--status-{open,resolved,closed}` (amber, green, slate) with `-foreground` and `-accent`. Open is
+    deliberately not brand blue, which already means "link" and "selected".
+  - `--category-{general,technical,refund}` (violet, cyan, rose) with `-foreground` and `-accent`,
+    kept clear of the status hues.
+  - `--table-{header,header-foreground,stripe,row-hover,muted-foreground}` for data tables.
+  - `--surface-muted-foreground` for secondary text on the `--surface` canvas.
+
+  Every text pair clears 4.5:1 (most 6:1+) and every accent 3:1 against the card. **Don't use
+  `text-muted-foreground` on a tint or on `--surface`**: the shadcn default falls to ~4.3–4.4:1 there;
+  use the table/surface muted tokens. Status marks are round dots, category marks are squares — keep
+  that distinction. Add a full set in both blocks for any new status or category, and check the
+  contrast numbers rather than eyeballing them.
+- **Narrow screens**: check new pages at 400px wide for horizontal overflow. The navbar hides the
+  logo's wordmark below `sm` (`<Logo wordmarkClassName="hidden sm:inline" />`) because an admin's
+  two nav links push Sign out off-screen otherwise — recheck if you add a nav link.
 - **Carousel**: `BrandPanel` renders shadcn's Carousel with its own arrows/dots built on the exported
   `useCarousel` hook, rather than `CarouselPrevious`/`CarouselNext` (which position themselves at the
   container edges). Listen to both `reInit` and `select` when tracking the active slide — the panel is
@@ -93,9 +110,114 @@ The client proxies `/api/*` requests to the server via Vite config (target is co
   - `classify-ticket` — classifies inbound tickets via GPT (retryLimit: 3, retryDelay: 30s, exponential backoff)
   - `auto-resolve-ticket` — attempts to auto-resolve tickets via GPT; if unsuccessful, transitions status to `open`
 
-## Ticket Lifecycle
+## Inbound Email
 
-- Inbound emails arrive via the `/api/webhooks/inbound-email` endpoint (SendGrid multipart format) and are created with status `new`
+- **No mail provider is chosen yet.** `POST /api/webhooks/inbound-email` (`server/src/routes/webhooks.ts`)
+  takes a provider-neutral JSON email — `inboundEmailSchema` in `core/schemas/inbound-email.ts`:
+  `{ from, subject?, text?, html?, messageId? }`, where `from` is the raw From header value. Wiring
+  up SendGrid, Mailgun, Postmark or a relay later means an adapter that produces this shape (and
+  that provider's signature check), in front of the same code.
+- **Auth** is `Authorization: Bearer <INBOUND_EMAIL_SECRET>` (`middleware/require-inbound-secret.ts`),
+  checked before the body is read. Unset means the endpoint answers 503; set but under 32 chars
+  refuses to boot. Status codes follow provider retry semantics — providers retry 5xx and drop 4xx —
+  so "not configured" and database failures get redelivered and forged or malformed requests do not.
+- **Mounted above the app-wide `express.json()`** in `index.ts`, with its own 2mb parser. Its 100kb
+  default would 413 an ordinary HTML email.
+- **`lib/inbound-email.ts` (`toTicketData`)** never refuses an email for its content: a blank subject
+  or body becomes a placeholder, text is preferred over HTML (stripped by `htmlToText`), the body is
+  cut at 50,000 chars with a marker. Only an unusable `from` address is a 400.
+- **De-duplication**: `Ticket.messageId` is unique, stored without `<>`. A redelivered email answers
+  200 `{ id, duplicate: true }` with the existing ticket; a race meets the index and gets a 409.
+- Emailed tickets are created `OPEN` (the column default). Every email is a new ticket — replies are
+  not threaded onto existing ones yet.
+- **Try it locally**: set `INBOUND_EMAIL_SECRET` in `server/.env`, run the server, then
+  `cd server && bun run email:test` (flags: `--from`, `--subject`, `--text`, `--html`, `--message-id`).
+
+## Tickets (list, filters, detail)
+
+- **Routes**: `/tickets` (`client/src/pages/TicketsPage.tsx`) and `/tickets/:id`
+  (`TicketDetailPage.tsx`), for every signed-in user — agents manage tickets, so both sit under
+  `ProtectedRoute` only, not `AdminRoute`. The navbar's "Tickets" link is shown to everyone;
+  "Users" stays admin-only.
+- **List endpoint**: `GET /api/tickets` answers the list shape — `TICKET_LIST_SELECT`
+  (`server/src/lib/ticket-select.ts`), mirrored by `ticketListItemSchema` / `TicketListItem` in
+  `core/schemas/tickets.ts`: `id, subject, requesterEmail, status, category, createdAt`. **No
+  `body`** (an emailed body runs to 50,000 characters) and no `messageId`. Keep each server select
+  and its core schema in step, the same way `USER_LIST_SELECT` mirrors `userListItemSchema`.
+- **The table is TanStack Table v9 (`@tanstack/react-table`), in manual mode — the server sorts and
+  filters.** `TicketsPage` builds it with `useTable` (v9: `tableFeatures`, not `useReactTable` /
+  `getCoreRowModel`); features and columns live in `components/tickets/ticket-columns.tsx`
+  (`rowSortingFeature`, `columnFilteringFeature`, `globalFilteringFeature`,
+  `columnVisibilityFeature`, typed `tableMeta`/`columnMeta`). **The URL is the only state**: sorting,
+  column filters (`status`, `category`) and the global filter (`q`) are derived from
+  `useSearchParams` on every render (`lib/ticket-table-state.ts`), and every `on*Change` maps the
+  updated state straight back into the URL. Filter chips and search call
+  `column.setFilterValue` / `table.setGlobalFilter`, never the URL directly — except "Clear filters",
+  which writes the URL once because two `setSearchParams` calls in one tick overwrite each other.
+  `status` is a hidden column (`HIDDEN_TICKET_COLUMNS`) that exists only to hold the status filter.
+  No sorted or filtered row models are registered, so rows always render in server order.
+- **Sorting is server-side**: `?sort=createdAt|subject|category&dir=asc|desc`, ordered by
+  `ticketListOrderBy` (`server/src/lib/ticket-order.ts`, unit-tested) with `createdAt desc, id desc`
+  breaking ties. A column's first direction (dates newest first, text A–Z) is
+  `TICKET_SORT_FIRST_DIRECTION` in `core/constants/ticket.ts`, shared by the server default and the
+  columns' `sortDescFirst` — change it there, not in either place alone. The default sort (Received,
+  newest first) is written as no parameters. `enableMultiSort` and `enableSortingRemoval` are off —
+  one sort, always. **Category sorts by the Postgres enum's declaration order** (General, Technical,
+  Refund — the order the filters use), not alphabetically by label. Header cells carry `aria-sort`;
+  the sort buttons are hidden with the header row below `sm`.
+- **Filters and search are server-side and live in the URL.** `?status=`, `?category=` and `?q=` are
+  validated by `ticketListQuerySchema` (`validate(…, req.query, res, "query")`) and turned into the
+  Prisma `where` by `ticketListWhere` (`server/src/lib/ticket-where.ts`, unit-tested): exact status
+  and category, and for a non-blank `q` a case-insensitive match on subject or requester email, plus
+  the end of the id when `q` looks like a reference (`#K3F9QZ` or `k3f9qz`). An unknown status or
+  category, or a `q` over 200 chars, is a 400. On the client, `lib/ticket-filters.ts` reads them from
+  `useSearchParams` (an unknown value there counts as "All", so a stale link still shows a list) and
+  writes them back with `replace`. `TicketSearch.tsx` keeps the typed draft locally and applies it
+  after a 300ms pause (one request per pause, not per keystroke); a change from outside — "Clear
+  filters", Back — replaces the draft. `TicketFilters.tsx` is two shadcn ToggleGroups (Base UI) — chosen
+  over a Select because Base UI popups are a Vitest hazard (see Component Tests). Base UI emits `[]`
+  when the pressed item is clicked again; that and "All" both mean no filter. Each filter
+  combination (and each sort) is its own query (`["tickets", "list", query]`) with `keepPreviousData`, so the old
+  rows stay on screen, dimmed and `aria-busy`, while a new filter loads. A filter that matches
+  nothing shows "No tickets match these filters" with "Clear filters" (which clears the search too,
+  and keeps the sort), distinct from "No tickets yet".
+- **The list is grouped by status**: `TicketsTable` renders a `<section aria-label="Open tickets"
+  data-testid="ticket-group">` per status in `TICKET_STATUS_LABEL` order (Open, Resolved, Closed),
+  each headed by a collapse button named like "Open, 3 tickets" (disabled at 0) and holding its own
+  table. Rows keep the server's order within a section; a `?status=` filter shows only
+  that section. The tables are `table-fixed` with fixed side-column widths so sections line up — keep
+  widths in the column's `meta.className` if you add one. Columns: Ref (sm+), Ticket, Category (lg+),
+  Received (md+); the header row is hidden below `sm`, where only Ticket remains.
+- **References**: `ticketReference(id)` (`lib/ticket-reference.ts`) is `#` plus the id's last six
+  characters, upper-cased — tickets have no sequential number. It is shown on rows and the detail
+  page, and `?q=` matches it. It is a display handle, not a unique key.
+- **Detail endpoint**: `GET /api/tickets/:id` answers `TICKET_DETAIL_SELECT` / `ticketDetailSchema`
+  — the list shape plus `body` and `updatedAt`, still no `messageId` — or 404. `useTicket(id)`
+  caches under `["tickets", "detail", id]`, so invalidating `ticketsQueryKey` refreshes lists and
+  open tickets alike. `queryClient` does not retry a 404 (nor 401/403).
+- **Detail page**: a 404 shows "Ticket not found"; any other failure is an `ErrorAlert`. The body is
+  plain text rendered with `whitespace-pre-wrap break-words` — never as HTML. "All tickets" returns
+  to the list's filters: each row's link passes `state={{ listSearch }}`, and the page only trusts a
+  string starting with `?` (router state survives a reload and could hold anything).
+- **Rows open on click anywhere**: the subject is the row's one `<Link>`, and its `::after` is
+  stretched over the `relative` row. Don't add a row `onClick` or a second link — this keeps one
+  named link per row for keyboard and screen-reader users.
+- **Labels and colours**: stored values (`OPEN`, `TECHNICAL_QUESTION`) are never shown raw. Display
+  names live in `client/src/lib/ticket-labels.ts`; every status and category class string lives in
+  `components/tickets/ticket-style.ts` (`STATUS_STYLE`, `CATEGORY_STYLE`, `STATUS_HEADING`). Render
+  them through `TicketStatusBadge` and `TicketCategoryTag` — don't build a status `Badge` or category
+  chip inline. All are full `Record`s, so a new status or category fails the typecheck until it has
+  a label and colours.
+  Dates go through `formatDateTime` (`lib/format-date.ts`) inside a `<time dateTime>`.
+- **Not built yet**: pagination (the list returns every matching ticket, so every section's count is
+  a full count), a sort control on phones (headers are hidden below `sm`), changing status or
+  assigning from the detail page, and replies.
+
+## Ticket Lifecycle (planned — not built)
+
+The AI pipeline below does not exist yet: there is no pg-boss queue, no AI SDK, and `TicketStatus`
+is only `OPEN | RESOLVED | CLOSED`. When it is built, emailed tickets move to being created as `new`:
+
 - The system enqueues `classify-ticket` and `auto-resolve-ticket` background jobs automatically
 - Status flow: `new` → `processing` (AI working) → `open` (if not auto-resolved) or `resolved` (if auto-resolved)
 - `new` and `processing` tickets are system-managed and never shown in the agent UI — agents only see `open`, `resolved`, and `closed` tickets
@@ -157,6 +279,10 @@ The client proxies `/api/*` requests to the server via Vite config (target is co
 - **`bun run db:seed:demo`** (in `server/`) fills the dev database with six demo users so the
   ordering is visible. They have no credential account and cannot sign in; remove them with
   `bun prisma/seed-demo-users.ts --clear`.
+- **`bun run db:seed:demo:tickets`** (in `server/`) fills the dev database with 32 realistic tickets
+  across every status and category, spread over five weeks. Re-runnable (keyed by a
+  `demo-ticket-N@demo.helpdesk.local` Message-ID); remove them with
+  `bun prisma/seed-demo-tickets.ts --clear`. Refuses to run with `NODE_ENV=production`.
 
 ## Authentication
 
@@ -175,6 +301,14 @@ The client proxies `/api/*` requests to the server via Vite config (target is co
 ## Testing
 
 - **Prefer component tests** for the majority of coverage (rendering, states, data display, error handling). Reserve E2E tests for things that truly need a real browser + server: navigation, auth redirects, and full-stack integration flows (e.g. webhook creates data that appears in the UI).
+
+### Server Unit Tests
+- **Framework**: Bun's built-in `bun test` (`import { describe, expect, test } from "bun:test"`) — no dependency, no config
+- Run with `bun run test:server` from the root, or `bun run test` inside `server/` (`bun test src/lib/inbound-email.test.ts` for one file)
+- For **pure server logic** — parsing, normalization, guards' decision functions. Place test files next to the module: `module-name.test.ts`
+- Keep the logic worth testing in exported pure functions (e.g. `secretMatches` beside `requireInboundSecret`) rather than testing Express handlers or Prisma calls here; routes and the database are covered by E2E
+- Bun loads `server/.env` for tests too, so a module that validates env at import (like `require-inbound-secret.ts`) sees your local values
+- The same rule as component tests applies: break what a new test covers, see it go red, restore
 
 ### Component Tests
 - **Framework**: Vitest + React Testing Library. Config in `client/vitest.config.ts`, which extends the app's Vite config so `@/…` and the `core` package resolve exactly as they do in the bundler
@@ -247,10 +381,28 @@ than none. This has caught two vacuous tests here — both looked correct on rev
 empty, error, and the disabled or in-flight variants. Those branches are where the bugs are
 and they are cheap to reach with a mock.
 
-**Existing suites** (121 tests): `LoginPage` (inputs, validation, submit, redirects),
+**Existing suites** (217 tests): `LoginPage` (inputs, validation, submit, redirects),
 `UserRow`, `UsersPage`, `ErrorAlert`, `ProtectedRoute` (covers `AdminRoute`), `Navbar`,
 `UsersTable`, `CreateUserSheet`, `EditUserSheet`, `DeleteUserDialog`, `use-users`,
-`lib/reorder`.
+`lib/reorder`, `TicketsPage` (covers `TicketsTable`, `TicketFilters`, `TicketSearch` and
+`use-tickets`, and TanStack sorting/filtering end to end with a mocked API), `TicketDetailPage`,
+`lib/ticket-filters`, `lib/ticket-table-state`, `lib/ticket-reference`, `lib/query-client` (the
+retry policy). Ticket rows carry
+`data-testid="ticket-row"` and `data-ticket-id`; `makeTicket` / `makeTickets` / `makeTicketDetail`
+in `@/test/fixtures` build ticket data the same way `makeUser` does.
+
+**Pages that read the URL need a real router in tests.** `TicketsPage` and `TicketDetailPage` render
+inside `MemoryRouter` with real `Routes`; to assert what a page wrote to the URL, or where a link
+went, mount a small probe component on the route that renders `useLocation()` (see
+`TicketsPage.test.tsx`), rather than mocking `useSearchParams` or `useNavigate`.
+
+**Base UI's ToggleGroup is safe under jsdom** (unlike its Menu): `userEvent.click` toggles it, and
+buttons are queryable by `getByRole("button", { name, pressed })` inside
+`getByRole("group", { name })`.
+
+**Collapsed content is `hidden`, which takes it out of the accessibility tree**: `getByRole` will
+not find a link in a collapsed ticket section at all. Assert a collapsed row with
+`getByText(…)` + `not.toBeVisible()`, after a positive assertion on the button's `expanded` state.
 
 **Deliberately untested**: `Logo`, `AppLayout`, `RouteSpinner`, `ErrorMessage` — presentational
 with no branching, so a test would restate the JSX. `BrandPanel` needs real layout. `HomePage`
@@ -261,7 +413,21 @@ renders placeholders until it is wired to data.
 - Run with `bun run test:e2e` from root. Also `test:e2e:ui`, `test:e2e:headed`, `test:e2e:report`
 - First checkout: `docker compose up -d` then `bun run test:e2e:install` (downloads Chromium)
 - Runs against a separate `helpdesk_test` database on its own ports (server 4001, Vite 5174), so it coexists with `bun run dev`. The dev database is never touched.
-- Existing specs: `e2e/tests/auth-access.spec.ts` (redirects, role gating, reload persistence) and `e2e/tests/login-redirect.spec.ts` (the only form sign-in — see the budget note below)
+- Existing specs: `e2e/tests/auth-access.spec.ts` (redirects, role gating, reload persistence) and `e2e/tests/login-redirect.spec.ts` (the only form sign-in — see the budget note below), and
+  `e2e/tests/inbound-email.spec.ts` (webhook → ticket through the API: bearer secret, the router's
+  mount above `express.json()`, Message-ID de-duplication). The harness passes `INBOUND_EMAIL_SECRET`
+  from `e2e/test-env.ts`. `e2e/tests/tickets-list.spec.ts` covers the navbar route to `/tickets` and
+  emailed tickets showing newest first; `tickets-filters.spec.ts` the server-side status/category
+  narrowing, reload persistence and the 400; `tickets-detail.spec.ts` opening a row by clicking
+  anywhere on it, the return to the filtered list, the 404 page and the detail JSON shape;
+  `tickets-search.spec.ts` subject/email/reference search on real Postgres and its 400;
+  `tickets-sort.spec.ts` server-side sorting by subject and received, reload persistence, category
+  enum order and the 400s. **A server that ignored `?status=` would look identical in the browser**
+  — sections group rows by status on the client — so status filtering is proved through the API
+  response, not the page. Specs create tickets through `createTicketByApi` in `e2e/helpers.ts`.
+- **The `request` fixture inherits `test.use({ storageState })`**, not just `page` — a request made
+  inside a signed-in describe carries the session cookie. A "no session" API test must live outside
+  any `storageState` block (see the top-level describe in `auth-api.spec.ts`).
 
 #### Writing E2E tests — use the `e2e-test-writer` agent
 

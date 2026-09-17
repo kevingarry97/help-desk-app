@@ -3,11 +3,6 @@ import { render, screen } from "@testing-library/react";
 
 import ErrorAlert from "@/components/ErrorAlert";
 
-/**
- * The point of this component is that a failure is never silent. Every branch here is a
- * shape the app actually throws: an Axios rejection carrying the API's `{ error }` body, a
- * plain Error, a bare string, or something unrecognisable.
- */
 describe("ErrorAlert", () => {
   it("renders nothing when there is no message and no error", () => {
     const { container } = render(<ErrorAlert />);

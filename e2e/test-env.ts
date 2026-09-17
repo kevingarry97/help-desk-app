@@ -20,6 +20,12 @@ export const AGENT = {
   name: "E2E Agent",
 } as const;
 
+/**
+ * Bearer secret for POST /api/webhooks/inbound-email. E2E-only. Must be at least 32
+ * characters: server/src/middleware/require-inbound-secret.ts refuses to boot on a shorter one.
+ */
+export const INBOUND_EMAIL_SECRET = "e2e-only-inbound-email-secret-not-for-any-deployment";
+
 export const STORAGE_STATE = {
   admin: "e2e/.auth/admin.json",
   agent: "e2e/.auth/agent.json",
@@ -37,6 +43,7 @@ export const serverEnv = {
   ADMIN_PASSWORD: ADMIN.password,
   AGENT_EMAIL: AGENT.email,
   AGENT_PASSWORD: AGENT.password,
+  INBOUND_EMAIL_SECRET,
   RATE_LIMIT_API_MAX: "100000",
   RATE_LIMIT_AUTH_MAX: "100000",
 } satisfies Record<string, string>;

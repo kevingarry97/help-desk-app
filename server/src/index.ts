@@ -10,6 +10,7 @@ import { apiLimiter, authLimiter } from "./middleware/rate-limit";
 import { healthRouter } from "./routes/health";
 import { ticketsRouter } from "./routes/tickets";
 import { usersRouter } from "./routes/users";
+import { webhooksRouter } from "./routes/webhooks";
 
 const allowedOrigins = getAllowedOrigins();
 
@@ -41,6 +42,8 @@ app.use("/api", apiLimiter);
 app.use("/api/auth", authLimiter);
 
 app.all("/api/auth/{*any}", toNodeHandler(auth));
+
+app.use("/api/webhooks", webhooksRouter);
 
 app.use(express.json());
 

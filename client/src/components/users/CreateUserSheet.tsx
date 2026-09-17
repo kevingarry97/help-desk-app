@@ -8,11 +8,11 @@ import { Role } from "core/constants/role";
 
 import ErrorAlert from "@/components/ErrorAlert";
 import ErrorMessage from "@/components/ErrorMessage";
-import RoleRadioGroup from "@/components/users/RoleRadioGroup";
 import { useCreateUser } from "@/hooks/use-users";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Sheet,
   SheetContent,
@@ -22,6 +22,19 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+
+const ROLE_OPTIONS = [
+  {
+    value: Role.Agent,
+    label: "Agent",
+    hint: "Works the ticket queue.",
+  },
+  {
+    value: Role.Admin,
+    label: "Admin",
+    hint: "Everything an agent can do, plus managing this list.",
+  },
+] as const;
 
 const EMPTY_FORM: CreateUserValues = {
   name: "",
@@ -34,21 +47,11 @@ function Required() {
   return <span className="text-destructive">*</span>;
 }
 
-/**
- * The "New user" action and the panel behind it.
- *
- * Sign-up is disabled, so this form is the only way an account comes into existence outside
- * the seed scripts — which is why it asks for a password: an admin sets one and passes it
- * on, since the new user has no way to choose or reset one themselves.
- */
 export default function CreateUserSheet() {
   const [open, setOpen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const create = useCreateUser();
 
-  // Three generics because the schema transforms: the form holds what is being typed
-  // (CreateUserValues), and handleSubmit hands on what the resolver produced from it
-  // (CreateUserInput — trimmed and lowercased), which is what the API wants.
   const {
     control,
     register,
@@ -61,14 +64,9 @@ export default function CreateUserSheet() {
   });
 
   const handleOpenChange = (next: boolean) => {
-    // A request in flight owns the panel. Dismissing here — Escape, the backdrop, Cancel —
-    // would throw away what was typed while the account may still be being created, and
-    // leave the admin unsure whether it was.
     if (!next && create.isPending) return;
 
     if (next) {
-      // Reopening starts clean: no values from the last account, and no error from an
-      // attempt the admin has already walked away from.
       reset(EMPTY_FORM);
       create.reset();
       setShowPassword(false);
@@ -78,9 +76,6 @@ export default function CreateUserSheet() {
   };
 
   const onSubmit = (values: CreateUserInput) => {
-    // mutate rather than mutateAsync: a rejection here would propagate out of
-    // handleSubmit's promise with nobody to catch it, and the failure is already on screen
-    // through create.error.
     create.mutate(values, { onSuccess: () => setOpen(false) });
   };
 
@@ -99,8 +94,6 @@ export default function CreateUserSheet() {
           className="flex min-h-0 flex-1 flex-col"
           noValidate
         >
-          {/* pr-12 keeps the description clear of the close button, which the primitive
-              pins to the top-right corner of the panel. */}
           <SheetHeader className="border-b border-border p-5 pr-12">
             <SheetTitle className="text-base">New user</SheetTitle>
             <SheetDescription>
@@ -156,8 +149,6 @@ export default function CreateUserSheet() {
                 <Input
                   id="new-user-password"
                   type={showPassword ? "text" : "password"}
-                  // Not "new-password": the browser would offer to save this under the
-                  // signed-in admin's own credentials, which are not the ones being set.
                   autoComplete="off"
                   placeholder="At least 8 characters"
                   aria-invalid={!!errors.password}
@@ -165,7 +156,6 @@ export default function CreateUserSheet() {
                   className="h-10 pr-10"
                   {...register("password")}
                 />
-                {/* Revealable because the admin has to read this back to someone. */}
                 <button
                   type="button"
                   onClick={() => setShowPassword((shown) => !shown)}
@@ -194,13 +184,43 @@ export default function CreateUserSheet() {
                 control={control}
                 name="role"
                 render={({ field }) => (
-                  <RoleRadioGroup
-                    idPrefix="new-user-role"
-                    labelledBy="new-user-role-label"
+                  <RadioGroup
+                    aria-labelledby="new-user-role-label"
                     value={field.value}
-                    onValueChange={field.onChange}
+                    onValueChange={(value) => field.onChange(value)}
                     onBlur={field.onBlur}
-                  />
+                  >
+                    {ROLE_OPTIONS.map((option) => {
+                      const id = `new-user-role-${option.value}`;
+
+                      return (
+                        <Label
+                          key={option.value}
+                          htmlFor={id}
+                          className="items-start gap-3 rounded-lg border border-input p-3 transition-colors hover:bg-muted/50 has-data-checked:border-primary has-data-checked:bg-muted/40"
+                        >
+                          <RadioGroupItem
+                            id={id}
+                            value={option.value}
+                            aria-labelledby={`${id}-label`}
+                            aria-describedby={`${id}-hint`}
+                            className="mt-0.5"
+                          />
+                          <span className="grid gap-0.5">
+                            <span id={`${id}-label`} className="font-medium">
+                              {option.label}
+                            </span>
+                            <span
+                              id={`${id}-hint`}
+                              className="text-xs font-normal text-muted-foreground"
+                            >
+                              {option.hint}
+                            </span>
+                          </span>
+                        </Label>
+                      );
+                    })}
+                  </RadioGroup>
                 )}
               />
               <ErrorMessage message={errors.role?.message} />

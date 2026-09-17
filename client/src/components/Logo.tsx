@@ -1,9 +1,12 @@
 export default function Logo({
   tone = "brand",
   className = "",
+  wordmarkClassName = "",
 }: {
   tone?: "brand" | "white";
   className?: string;
+  /** Extra classes for the "HELPDESK" text, e.g. to hide it where space is short. */
+  wordmarkClassName?: string;
 }) {
   const mark = tone === "white" ? "#ffffff" : "var(--brand-600)";
   const glyph = tone === "white" ? "var(--brand-600)" : "#ffffff";
@@ -18,7 +21,9 @@ export default function Logo({
           fill={glyph}
         />
       </svg>
-      <span className={`text-lg font-bold tracking-[0.14em] ${word}`}>HELPDESK</span>
+      <span className={`text-lg font-bold tracking-[0.14em] ${word} ${wordmarkClassName}`}>
+        HELPDESK
+      </span>
     </div>
   );
 }

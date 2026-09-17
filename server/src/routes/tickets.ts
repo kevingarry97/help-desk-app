@@ -1,8 +1,11 @@
 import { Router } from "express";
-import { createTicketSchema, updateTicketSchema } from "core/schemas/tickets";
+import { createTicketSchema, ticketListQuerySchema, updateTicketSchema } from "core/schemas/tickets";
 
 import { prisma } from "../db";
 import { isRecordNotFound } from "../lib/prisma-errors";
+import { ticketListOrderBy } from "../lib/ticket-order";
+import { TICKET_DETAIL_SELECT, TICKET_LIST_SELECT } from "../lib/ticket-select";
+import { ticketListWhere } from "../lib/ticket-where";
 import { validate } from "../lib/validate";
 import { requireAuth } from "../middleware/require-auth";
 
@@ -11,9 +14,31 @@ export const ticketsRouter = Router();
 // Every ticket route needs a session; agents manage tickets, so no role check beyond it.
 ticketsRouter.use(requireAuth);
 
-ticketsRouter.get("/", async (_req, res) => {
-  const tickets = await prisma.ticket.findMany({ orderBy: { createdAt: "desc" } });
+ticketsRouter.get("/", async (req, res) => {
+  const result = validate(ticketListQuerySchema, req.query, res, "query");
+  if (!result.ok) return;
+
+  const tickets = await prisma.ticket.findMany({
+    where: ticketListWhere(result.data),
+    select: TICKET_LIST_SELECT,
+    orderBy: ticketListOrderBy(result.data),
+  });
+
   res.json(tickets);
+});
+
+ticketsRouter.get("/:id", async (req, res) => {
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: req.params.id },
+    select: TICKET_DETAIL_SELECT,
+  });
+
+  if (!ticket) {
+    res.status(404).json({ error: `No ticket with id ${req.params.id}` });
+    return;
+  }
+
+  res.json(ticket);
 });
 
 ticketsRouter.post("/", async (req, res) => {

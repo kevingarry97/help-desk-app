@@ -1,6 +1,12 @@
 import { expect, test } from "@playwright/test";
 
-import { ORIGIN_HEADERS, adminApiContext, postSignIn } from "../helpers";
+import {
+  ORIGIN_HEADERS,
+  adminApiContext,
+  createTicketByEmail,
+  postSignIn,
+  uniqueTag,
+} from "../helpers";
 import { resetRateLimits } from "../reset-rate-limits";
 import { ADMIN, STORAGE_STATE } from "../test-env";
 
@@ -9,6 +15,31 @@ test.describe("the API auth boundary", () => {
     const response = await request.get("/api/tickets");
 
     expect(response.status()).toBe(401);
+  });
+
+  test("refuses an existing ticket's detail, body included, to a request with no session", async ({
+    request,
+    playwright,
+  }) => {
+    // The bare request fixture: this describe sets no storageState, so it carries no cookie.
+    // The webhook needs none — its bearer secret is the only credential in play.
+    const tag = uniqueTag();
+    const id = await createTicketByEmail(request, {
+      from: `auth.detail.${tag}@example.com`,
+      subject: `Auth detail e2e ${tag}`,
+      text: "Must not be readable without a session.",
+    });
+
+    const anonymous = await request.get(`/api/tickets/${id}`);
+    expect(anonymous.status(), "no session").toBe(401);
+
+    // Control: the same ticket with a session answers 200, so the 401 above is the auth
+    // boundary refusing a real ticket rather than anything that would refuse everyone.
+    const admin = await adminApiContext(playwright);
+    const signedIn = await admin.get(`/api/tickets/${id}`);
+    await admin.dispose();
+
+    expect(signedIn.status(), "with the admin's session").toBe(200);
   });
 
   test("refuses sign-up even though the endpoint is mounted", async ({ request }) => {

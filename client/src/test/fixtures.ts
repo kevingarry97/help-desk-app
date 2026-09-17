@@ -1,3 +1,4 @@
+import type { TicketDetail, TicketListItem } from "core/schemas/tickets";
 import type { UserListItem } from "core/schemas/users";
 
 /**
@@ -39,4 +40,36 @@ export function makeUsers(...users: Partial<UserListItem>[]): UserListItem[] {
 /** Resets the id sequence so ids are predictable within a test file. */
 export function resetUserSequence(): void {
   sequence = 0;
+}
+
+let ticketSequence = 0;
+
+/** A ticket with defaults for everything. Ids are unique per call unless one is given. */
+export function makeTicket(overrides: Partial<TicketListItem> = {}): TicketListItem {
+  ticketSequence += 1;
+
+  return {
+    id: `t${ticketSequence}`,
+    subject: "Cannot sign in",
+    requesterEmail: "student@example.com",
+    status: "OPEN",
+    category: "GENERAL_QUESTION",
+    createdAt: "2026-09-16T09:30:00.000Z",
+    ...overrides,
+  };
+}
+
+/** A list in the order given, with `id` assigned by position (`t1`, `t2`, …). */
+export function makeTickets(...tickets: Partial<TicketListItem>[]): TicketListItem[] {
+  return tickets.map((overrides, index) => makeTicket({ id: `t${index + 1}`, ...overrides }));
+}
+
+/** A ticket as GET /api/tickets/:id returns it: the list fields plus body and updatedAt. */
+export function makeTicketDetail(overrides: Partial<TicketDetail> = {}): TicketDetail {
+  return {
+    ...makeTicket(),
+    body: "I reset my password twice and still can't get in.",
+    updatedAt: "2026-09-16T10:15:00.000Z",
+    ...overrides,
+  };
 }

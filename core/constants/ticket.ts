@@ -19,3 +19,25 @@ export const TicketCategory = {
 } as const;
 
 export type TicketCategory = (typeof TicketCategory)[keyof typeof TicketCategory];
+
+/** The columns GET /api/tickets can sort by. Values are the Ticket fields they order on. */
+export const TicketSortField = {
+  Received: "createdAt",
+  Subject: "subject",
+  Category: "category",
+} as const;
+
+export type TicketSortField = (typeof TicketSortField)[keyof typeof TicketSortField];
+
+export const SortDirection = { Asc: "asc", Desc: "desc" } as const;
+
+export type SortDirection = (typeof SortDirection)[keyof typeof SortDirection];
+
+/** The direction a column sorts in when first chosen: newest first for dates, A–Z otherwise. */
+export const TICKET_SORT_FIRST_DIRECTION: Record<TicketSortField, SortDirection> = {
+  createdAt: SortDirection.Desc,
+  subject: SortDirection.Asc,
+  category: SortDirection.Asc,
+};
+
+export const DEFAULT_TICKET_SORT_FIELD = TicketSortField.Received;

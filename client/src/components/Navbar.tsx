@@ -9,6 +9,14 @@ import { Role } from "core/constants/role";
 import { signOut, useSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 
+const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+  cn(
+    "rounded-md px-3 py-2 text-sm font-medium transition-colors",
+    isActive
+      ? "bg-brand-50 text-brand-700"
+      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+  );
+
 export default function Navbar() {
   const { data: session } = useSession();
   const navigate = useNavigate();
@@ -49,25 +57,20 @@ export default function Navbar() {
             aria-label="Helpdesk home"
             className="rounded-md transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
-            <Logo />
+            {/* Mark only on phones: with an admin's two nav links, the wordmark pushes Sign
+                out off a 400px screen. The link keeps its "Helpdesk home" name either way. */}
+            <Logo wordmarkClassName="hidden sm:inline" />
           </Link>
-          {isAdmin && (
-            <nav className="flex items-center gap-1">
-              <NavLink
-                to="/users"
-                className={({ isActive }) =>
-                  cn(
-                    "rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-brand-50 text-brand-700"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )
-                }
-              >
+          <nav className="flex items-center gap-1">
+            <NavLink to="/tickets" className={navLinkClass}>
+              Tickets
+            </NavLink>
+            {isAdmin && (
+              <NavLink to="/users" className={navLinkClass}>
                 Users
               </NavLink>
-            </nav>
-          )}
+            )}
+          </nav>
         </div>
 
         <div className="flex items-center gap-4">
