@@ -1,9 +1,3 @@
-// Mirrors the TicketStatus and TicketCategory enums in server/prisma/schema.prisma: these
-// values are what Postgres stores, so the two must stay identical. Declared here as
-// `as const` objects rather than imported from the generated Prisma client because the
-// client shares these schemas and cannot reach server-generated code.
-// server/src/lib/enum-parity.ts fails the server typecheck if they ever drift.
-
 export const TicketStatus = {
   Open: "OPEN",
   Resolved: "RESOLVED",
@@ -11,6 +5,22 @@ export const TicketStatus = {
 } as const;
 
 export type TicketStatus = (typeof TicketStatus)[keyof typeof TicketStatus];
+
+export const TICKET_STATUS_ORDER: readonly TicketStatus[] = [
+  TicketStatus.Open,
+  TicketStatus.Resolved,
+  TicketStatus.Closed,
+];
+
+export const TICKET_GROUP_PAGE_SIZE = 10;
+
+export const TICKET_GROUP_PAGE_PARAM = {
+  OPEN: "openPage",
+  RESOLVED: "resolvedPage",
+  CLOSED: "closedPage",
+} as const satisfies Record<TicketStatus, string>;
+
+export type TicketGroupPageParam = (typeof TICKET_GROUP_PAGE_PARAM)[TicketStatus];
 
 export const TicketCategory = {
   GeneralQuestion: "GENERAL_QUESTION",
@@ -33,7 +43,6 @@ export const SortDirection = { Asc: "asc", Desc: "desc" } as const;
 
 export type SortDirection = (typeof SortDirection)[keyof typeof SortDirection];
 
-/** The direction a column sorts in when first chosen: newest first for dates, A–Z otherwise. */
 export const TICKET_SORT_FIRST_DIRECTION: Record<TicketSortField, SortDirection> = {
   createdAt: SortDirection.Desc,
   subject: SortDirection.Asc,

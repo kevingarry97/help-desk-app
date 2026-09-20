@@ -18,8 +18,9 @@ import { STORAGE_STATE } from "../test-env";
  * on screen before the click, and alphabetical category order (which is oldest first here)
  * cannot pass for declared order.
  *
- * Other specs leave tickets behind (the database resets once per run, not per test), so
- * orders are compared among this run's tagged rows only.
+ * Other specs leave tickets behind (the database resets once per run, not per test), and each
+ * status section shows only its first 10 tickets, so the UI tests search for this run's tag to
+ * narrow the Open section to these three, and orders are compared among the tagged rows only.
  */
 
 type Name = "mango" | "apple" | "zebra";
@@ -90,9 +91,12 @@ test.describe("sorting tickets, signed in as an agent", () => {
     }
   });
 
-  /** Opens the default list and waits for this run's rows in their default order. */
+  /**
+   * Opens the list searched down to this run's three tickets — a section pages at 10, and other
+   * specs' tickets would otherwise push these off the first page — and waits for the default order.
+   */
   async function openDefaultList(page: Page): Promise<Locator> {
-    await page.goto("/tickets");
+    await page.goto(`/tickets?q=${encodeURIComponent(tag)}`);
     const open = openSection(page);
 
     await expect

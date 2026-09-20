@@ -1,27 +1,16 @@
-import { useMemo } from "react";
-import { useLocation, useSearchParams } from "react-router";
-import { functionalUpdate, useTable } from "@tanstack/react-table";
+import { Outlet, useSearchParams } from "react-router";
 import { Inbox, SearchX } from "lucide-react";
-import type { TicketListItem, TicketListQuery } from "core/schemas/tickets";
-import { cn } from "cn";
 
 import ErrorAlert from "@/components/ErrorAlert";
-import {
-  HIDDEN_TICKET_COLUMNS,
-  ticketColumns,
-  ticketTableFeatures,
-} from "@/components/tickets/ticket-columns";
-import TicketFilters from "@/components/tickets/TicketFilters";
-import TicketSearch from "@/components/tickets/TicketSearch";
 import TicketsTable from "@/components/tickets/TicketsTable";
-import { useTickets } from "@/hooks/use-tickets";
-import { filtersFromSearchParams, hasFilters, withParams, withoutFilters } from "@/lib/ticket-filters";
+import { useTicketGroups } from "@/hooks/use-tickets";
 import {
-  columnFiltersFromQuery,
-  queryFromColumnFilters,
-  queryFromSorting,
-  sortingFromQuery,
-} from "@/lib/ticket-table-state";
+  filtersFromSearchParams,
+  hasFilters,
+  withParams,
+  withoutFilters,
+  type TicketQueryPatch,
+} from "@/lib/ticket-filters";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -79,44 +68,15 @@ function NoMatches({ onClear }: { onClear: () => void }) {
   );
 }
 
-const NO_TICKETS: TicketListItem[] = [];
-
 export default function TicketsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { search } = useLocation();
-  const filters = filtersFromSearchParams(searchParams);
-  const { status, category, q, sort, dir } = filters;
+  const query = filtersFromSearchParams(searchParams);
 
-  const { data: tickets, isPending, isError, error, isPlaceholderData } = useTickets(filters);
+  const { data: groups, isPending, isError, error, isPlaceholderData } = useTicketGroups(query);
+  const isEmpty = groups?.every((group) => group.total === 0);
 
-  const update = (patch: Partial<Record<keyof TicketListQuery, string | undefined>>) =>
+  const updateQuery = (patch: TicketQueryPatch) =>
     setSearchParams((current) => withParams(current, patch), { replace: true });
-
-  const sorting = useMemo(() => sortingFromQuery({ sort, dir }), [sort, dir]);
-  const columnFilters = useMemo(() => columnFiltersFromQuery({ status, category }), [status, category]);
-  const globalFilter = q ?? "";
-
-  // The URL is the state; TanStack reads it and reports changes, which go straight back to it.
-  // Sorting and filtering are manual — the server does both.
-  const table = useTable({
-    features: ticketTableFeatures,
-    columns: ticketColumns,
-    data: tickets ?? NO_TICKETS,
-    getRowId: (ticket) => ticket.id,
-    manualSorting: true,
-    manualFiltering: true,
-    enableMultiSort: false,
-    enableSortingRemoval: false,
-    state: { sorting, columnFilters, globalFilter, columnVisibility: HIDDEN_TICKET_COLUMNS },
-    onSortingChange: (updater) => update(queryFromSorting(functionalUpdate(updater, sorting))),
-    onColumnFiltersChange: (updater) =>
-      update(queryFromColumnFilters(functionalUpdate(updater, columnFilters))),
-    onGlobalFilterChange: (updater) => {
-      const next = functionalUpdate(updater, globalFilter);
-      update({ q: typeof next === "string" ? next.trim() || undefined : undefined });
-    },
-    meta: { listSearch: search },
-  });
 
   const clearFilters = () => setSearchParams(withoutFilters, { replace: true });
 
@@ -127,36 +87,21 @@ export default function TicketsPage() {
         Every ticket in the queue by status. Sort by any column.
       </p>
 
-      <div className="mt-6 space-y-4">
-        <TicketSearch value={q} onChange={(next) => table.setGlobalFilter(next ?? "")} />
-        <TicketFilters
-          status={status}
-          category={category}
-          onStatusChange={(next) => table.getColumn("status")?.setFilterValue(next)}
-          onCategoryChange={(next) => table.getColumn("category")?.setFilterValue(next)}
-        />
-      </div>
-
-      <div className="mt-7 space-y-4">
+      <TicketsTable
+        groups={groups}
+        query={query}
+        onQueryChange={updateQuery}
+        isUpdating={isPlaceholderData}
+      >
         {isError && <ErrorAlert error={error} fallback="Failed to load tickets." />}
 
         {isPending && <TableSkeleton />}
 
-        {tickets && (
-          <div
-            aria-busy={isPlaceholderData}
-            className={cn("transition-opacity", isPlaceholderData && "opacity-60")}
-          >
-            {tickets.length > 0 ? (
-              <TicketsTable table={table} />
-            ) : hasFilters(filters) ? (
-              <NoMatches onClear={clearFilters} />
-            ) : (
-              <EmptyState />
-            )}
-          </div>
-        )}
-      </div>
+        {isEmpty &&
+          (hasFilters(query) ? <NoMatches onClear={clearFilters} /> : <EmptyState />)}
+      </TicketsTable>
+
+      <Outlet />
     </>
   );
 }

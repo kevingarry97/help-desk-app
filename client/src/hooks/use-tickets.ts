@@ -1,26 +1,21 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import type { TicketDetail, TicketListItem, TicketListQuery } from "core/schemas/tickets";
+import type { TicketDetail, TicketGroups, TicketListQuery } from "core/schemas/tickets";
 
 import { api } from "@/lib/api";
 
 export const ticketsQueryKey = ["tickets"] as const;
 
 /**
- * Tickets matching `filters`, newest first. The server owns both the filtering and the
- * order; the list renders what comes back as given.
- *
- * Each filter combination is its own cache entry under the ["tickets"] prefix, so
- * invalidating `ticketsQueryKey` refreshes all of them — and every open ticket too. `keepPreviousData` holds the last
- * list on screen while a new filter loads, rather than dropping back to the skeleton on
- * every click.
+ * One page of tickets per status section, each with its total. The server filters, sorts and
+ * pages; each section's page comes from `query`. Every combination is its own cache entry under
+ * ["tickets"], and `keepPreviousData` keeps the last page on screen while the next one loads.
  */
-export function useTickets(filters: TicketListQuery = {}) {
+export function useTicketGroups(query: TicketListQuery = {}) {
   return useQuery({
-    queryKey: [...ticketsQueryKey, "list", filters],
+    queryKey: [...ticketsQueryKey, "groups", query],
     queryFn: async ({ signal }) => {
-      // Axios leaves undefined params out of the URL, so "any" sends no parameter at all.
-      const { data } = await api.get<TicketListItem[]>("/tickets", { params: filters, signal });
-      return data;
+      const { data } = await api.get<TicketGroups>("/tickets/by-status", { params: query, signal });
+      return data.groups;
     },
     placeholderData: keepPreviousData,
   });

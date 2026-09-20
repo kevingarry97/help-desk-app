@@ -3,6 +3,7 @@ import { createTicketSchema, ticketListQuerySchema, updateTicketSchema } from "c
 
 import { prisma } from "../db";
 import { isRecordNotFound } from "../lib/prisma-errors";
+import { groupPage, groupStatuses } from "../lib/ticket-groups";
 import { ticketListOrderBy } from "../lib/ticket-order";
 import { TICKET_DETAIL_SELECT, TICKET_LIST_SELECT } from "../lib/ticket-select";
 import { ticketListWhere } from "../lib/ticket-where";
@@ -11,7 +12,6 @@ import { requireAuth } from "../middleware/require-auth";
 
 export const ticketsRouter = Router();
 
-// Every ticket route needs a session; agents manage tickets, so no role check beyond it.
 ticketsRouter.use(requireAuth);
 
 ticketsRouter.get("/", async (req, res) => {
@@ -25,6 +25,27 @@ ticketsRouter.get("/", async (req, res) => {
   });
 
   res.json(tickets);
+});
+
+ticketsRouter.get("/by-status", async (req, res) => {
+  const result = validate(ticketListQuerySchema, req.query, res, "query");
+  if (!result.ok) return;
+
+  const query = result.data;
+  const orderBy = ticketListOrderBy(query);
+
+  const groups = await Promise.all(
+    groupStatuses(query).map(async (status) => {
+      const where = ticketListWhere({ ...query, status });
+      const total = await prisma.ticket.count({ where });
+      const { page, skip, take } = groupPage(query, status, total);
+      const tickets = await prisma.ticket.findMany({ where, select: TICKET_LIST_SELECT, orderBy, skip, take });
+
+      return { status, total, page, pageSize: take, tickets };
+    }),
+  );
+
+  res.json({ groups });
 });
 
 ticketsRouter.get("/:id", async (req, res) => {
@@ -60,9 +81,6 @@ ticketsRouter.patch("/:id", async (req, res) => {
     });
     res.json(ticket);
   } catch (error) {
-    // Only "no such row" is a 404. Everything else — a dropped connection, an exhausted
-    // pool — goes to errorHandler, which logs it and answers 500, rather than being
-    // laundered into a clean 404 that no one investigates.
     if (!isRecordNotFound(error)) throw error;
 
     res.status(404).json({ error: `No ticket with id ${req.params.id}` });

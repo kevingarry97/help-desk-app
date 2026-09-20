@@ -4,6 +4,7 @@ import {
   columnVisibilityFeature,
   createColumnHelper,
   globalFilteringFeature,
+  rowPaginationFeature,
   rowSortingFeature,
   tableFeatures,
   type ColumnVisibilityState,
@@ -23,13 +24,13 @@ export const ticketTableFeatures = tableFeatures({
   columnFilteringFeature,
   globalFilteringFeature,
   columnVisibilityFeature,
+  rowPaginationFeature,
   tableMeta: {} as TicketTableMeta,
   columnMeta: {} as TicketColumnMeta,
 });
 
 export type TicketTableFeatures = typeof ticketTableFeatures;
 
-// `status` is never drawn — sections show it — but its column holds the status filter.
 export const HIDDEN_TICKET_COLUMNS: ColumnVisibilityState = { status: false };
 
 const column = createColumnHelper<TicketTableFeatures, TicketListItem>();
@@ -52,8 +53,11 @@ export const ticketColumns = column.columns([
     cell: ({ row, table }) => (
       <>
         <Link
-          to={`/tickets/${encodeURIComponent(row.original.id)}`}
-          state={{ listSearch: table.options.meta?.listSearch ?? "" }}
+          to={{
+            pathname: `/tickets/${encodeURIComponent(row.original.id)}`,
+            search: table.options.meta?.listSearch,
+          }}
+          state={{ fromList: true }}
           title={row.original.subject}
           className="block truncate font-semibold text-foreground transition-colors group-hover/row:text-brand-700 after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:rounded-md focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-inset"
         >

@@ -1,23 +1,18 @@
 import { expect, test } from "@playwright/test";
 
-import { createTicketByEmail, ticketFilter, ticketRows, uniqueTag } from "../helpers";
+import {
+  createTicketByEmail,
+  expectOnDashboard,
+  ticketFilter,
+  ticketRows,
+  uniqueTag,
+} from "../helpers";
 import { STORAGE_STATE } from "../test-env";
-
-/**
- * One ticket, opened from the list. Component tests render the page from a mocked response
- * and check the router state the list hands over. Only the running stack shows a ticket that
- * arrived by email opening from a real click on its row (a stretched link, which depends on
- * real layout), the "All tickets" link carrying the filters back through the real router, and
- * the server's 404 reaching the page.
- *
- * Tickets have no delete endpoint and the database resets once per run, not per test, so
- * each test makes its own ticket with a unique subject and finds it by that.
- */
 
 test.describe("a ticket's detail, signed in as an agent", () => {
   test.use({ storageState: STORAGE_STATE.agent });
 
-  test("opens from a click anywhere on its row, showing the stored subject and body", async ({
+  test("opens in a sheet over the list from a click anywhere on its row, showing the stored body", async ({
     page,
     request,
   }) => {
@@ -39,8 +34,6 @@ test.describe("a ticket's detail, signed in as an agent", () => {
     const linkBox = await row.getByRole("link", { name: subject }).boundingBox();
     if (!rowBox || !linkBox) throw new Error("The ticket row or its subject link has no box.");
 
-    // Near the row's right-hand edge, in the Received cell. The premise is checked rather than
-    // assumed: a click on the subject text itself would pass without the stretched link.
     const position = { x: rowBox.width - 12, y: rowBox.height / 2 };
     expect(
       rowBox.x + position.x,
@@ -50,43 +43,85 @@ test.describe("a ticket's detail, signed in as an agent", () => {
     await row.click({ position });
 
     await expect(page).toHaveURL(`/tickets/${id}`);
-    await expect(page.getByRole("heading", { level: 1, name: subject })).toBeVisible();
-    await expect(page.getByText(body, { exact: true })).toBeVisible();
+
+    const sheet = page.getByRole("dialog", { name: subject });
+    await expect(sheet).toBeVisible();
+    await expect(sheet.getByText(body, { exact: true })).toBeVisible();
+
+    await expect(row, "the list stays mounted behind the sheet").toBeAttached();
   });
 
-  test("returns through All tickets to the filtered list it was opened from", async ({
+  test("closes back to the exact filtered, sorted list, and Back then leaves the list", async ({
     page,
     request,
   }) => {
     const tag = uniqueTag();
-    const subject = `Detail back e2e ${tag}`;
-    // An emailed ticket is open and a general question, so it is listed under this filter.
-    const filteredList = "/tickets?status=OPEN&category=GENERAL_QUESTION";
+    const subject = `Detail close e2e ${tag}`;
     const id = await createTicketByEmail(request, {
-      from: `detail.back.${tag}@example.com`,
+      from: `detail.close.${tag}@example.com`,
       subject,
-      text: "Opened from a filtered list.",
+      text: "Opened from a filtered, sorted list.",
     });
 
-    await page.goto(filteredList);
+    const query = "?status=OPEN&sort=subject&dir=asc";
+    const list = `/tickets${query}`;
+
+    await page.goto("/");
+    await expectOnDashboard(page);
+    await page.goto(list);
+
     await page.getByRole("link", { name: subject }).click();
 
-    await expect(page).toHaveURL(`/tickets/${id}`);
-    await expect(page.getByRole("heading", { level: 1, name: subject })).toBeVisible();
+    await expect(page).toHaveURL(`/tickets/${id}${query}`);
+    const sheet = page.getByRole("dialog", { name: subject });
+    await expect(sheet).toBeVisible();
 
-    await page.getByRole("link", { name: "All tickets" }).click();
+    await sheet.getByRole("button", { name: "Close" }).click();
 
-    await expect(page).toHaveURL(filteredList);
+    await expect(page).toHaveURL(list);
     await expect(
       ticketFilter(page, "Status").getByRole("button", { name: "Open", exact: true }),
       "the list is showing the filter it was left on",
     ).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("dialog"), "the sheet is gone").toHaveCount(0);
+
+    await page.goBack();
+
+    await expect(page).toHaveURL("/");
+    await expectOnDashboard(page);
   });
 
-  test("shows Ticket not found for an id that does not exist", async ({ page }) => {
+  test("opens straight from a link, and closing lands on that link's filtered list", async ({
+    page,
+    request,
+  }) => {
+    const tag = uniqueTag();
+    const subject = `Detail link e2e ${tag}`;
+    const id = await createTicketByEmail(request, {
+      from: `detail.link.${tag}@example.com`,
+      subject,
+      text: "Opened from a pasted link.",
+    });
+
+    await page.goto(`/tickets/${id}?status=OPEN`);
+
+    const sheet = page.getByRole("dialog", { name: subject });
+    await expect(sheet).toBeVisible();
+
+    await page.keyboard.press("Escape");
+
+    await expect(page).toHaveURL("/tickets?status=OPEN");
+    await expect(
+      ticketFilter(page, "Status").getByRole("button", { name: "Open", exact: true }),
+      "the list is showing the link's filter",
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("dialog"), "the sheet is gone").toHaveCount(0);
+  });
+
+  test("names the sheet Ticket not found for an id that does not exist", async ({ page }) => {
     await page.goto(`/tickets/no-such-ticket-${uniqueTag()}`);
 
-    await expect(page.getByRole("heading", { name: "Ticket not found" })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Ticket not found" })).toBeVisible();
   });
 
   test("the API serves a ticket with its body but not its messageId, and 404s an unknown id", async ({
@@ -118,8 +153,6 @@ test.describe("a ticket's detail, signed in as an agent", () => {
     });
     expect(ticket, "the detail must not carry the messageId").not.toHaveProperty("messageId");
 
-    // Asked of the same route that just answered 200, so this 404 is the route's own answer
-    // for a missing row and not Express's default for an unmounted path.
     const missing = await page.request.get(`/api/tickets/no-such-ticket-${tag}`);
     expect(missing.status(), "an id with no ticket").toBe(404);
   });

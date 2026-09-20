@@ -3,11 +3,18 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axios from "axios";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
+import {
+  TICKET_GROUP_PAGE_PARAM,
+  TICKET_GROUP_PAGE_SIZE,
+  TICKET_STATUS_ORDER,
+  type TicketStatus,
+} from "core/constants/ticket";
+import type { TicketGroup, TicketListItem } from "core/schemas/tickets";
 
 import { formatDateTime } from "@/lib/format-date";
 import { ticketReference } from "@/lib/ticket-reference";
 import TicketsPage from "@/pages/TicketsPage";
-import { makeTickets } from "@/test/fixtures";
+import { makeTicket, makeTickets } from "@/test/fixtures";
 import { renderWithQuery } from "@/test/render";
 
 vi.mock("axios", () => {
@@ -16,6 +23,36 @@ vi.mock("axios", () => {
 });
 
 const api = vi.mocked(axios, { deep: true }).create();
+
+type Params = Record<string, unknown>;
+
+/** Answers GET /tickets/by-status the way the server does: one page per status section. */
+function groupsFrom(tickets: TicketListItem[], params: Params = {}): TicketGroup[] {
+  const statuses = params.status ? [params.status as TicketStatus] : TICKET_STATUS_ORDER;
+  const size = TICKET_GROUP_PAGE_SIZE;
+
+  return statuses.map((status) => {
+    const matching = tickets.filter((ticket) => ticket.status === status);
+    const pageCount = Math.max(1, Math.ceil(matching.length / size));
+    const page = Math.min(Number(params[TICKET_GROUP_PAGE_PARAM[status]] ?? 1), pageCount);
+
+    return {
+      status,
+      total: matching.length,
+      page,
+      pageSize: size,
+      tickets: matching.slice((page - 1) * size, page * size),
+    };
+  });
+}
+
+function serve(tickets: TicketListItem[] | ((params: Params) => TicketListItem[])) {
+  vi.mocked(api.get).mockImplementation(async (_url, config) => {
+    const params = (config?.params ?? {}) as Params;
+    const list = typeof tickets === "function" ? tickets(params) : tickets;
+    return { data: { groups: groupsFrom(list, params) } } as never;
+  });
+}
 
 // Newest first, the way GET /api/tickets sends them.
 const TICKETS = makeTickets(
@@ -74,8 +111,9 @@ function renderPage(url = "/tickets") {
               <LocationProbe />
             </>
           }
-        />
-        <Route path="/tickets/:id" element={<DetailProbe />} />
+        >
+          <Route path=":id" element={<DetailProbe />} />
+        </Route>
       </Routes>
     </MemoryRouter>,
   );
@@ -94,12 +132,12 @@ const skeletons = (container: HTMLElement) => container.querySelectorAll('[data-
 
 describe("TicketsPage", () => {
   it("asks the API for the ticket list", async () => {
-    vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+    serve(TICKETS);
 
     renderPage();
 
     await waitFor(() => expect(rows()).toHaveLength(3));
-    expect(api.get).toHaveBeenCalledWith("/tickets", expect.anything());
+    expect(api.get).toHaveBeenCalledWith("/tickets/by-status", expect.anything());
   });
 
   describe("grouping by status", () => {
@@ -112,7 +150,7 @@ describe("TicketsPage", () => {
     );
 
     it("puts tickets into Open, Resolved and Closed sections, in that order", async () => {
-      vi.mocked(api.get).mockResolvedValue({ data: MIXED });
+      serve(MIXED);
 
       renderPage();
 
@@ -124,7 +162,7 @@ describe("TicketsPage", () => {
     });
 
     it("keeps the API's newest-first order inside a section", async () => {
-      vi.mocked(api.get).mockResolvedValue({ data: MIXED });
+      serve(MIXED);
 
       renderPage();
 
@@ -134,7 +172,7 @@ describe("TicketsPage", () => {
     });
 
     it("heads each section with its status and how many tickets it holds", async () => {
-      vi.mocked(api.get).mockResolvedValue({ data: makeTickets({ status: "OPEN" }, { status: "OPEN" }, { status: "RESOLVED" }) });
+      serve(makeTickets({ status: "OPEN" }, { status: "OPEN" }, { status: "RESOLVED" }));
 
       renderPage();
 
@@ -146,7 +184,7 @@ describe("TicketsPage", () => {
 
     it("collapses a section and opens it again", async () => {
       const user = userEvent.setup();
-      vi.mocked(api.get).mockResolvedValue({ data: MIXED });
+      serve(MIXED);
 
       renderPage();
       await waitFor(() => expect(rows()).toHaveLength(4));
@@ -163,7 +201,7 @@ describe("TicketsPage", () => {
     });
 
     it("shows only the chosen status's section when filtered by status", async () => {
-      vi.mocked(api.get).mockResolvedValue({ data: makeTickets({ subject: "Resolved only", status: "RESOLVED" }) });
+      serve(makeTickets({ subject: "Resolved only", status: "RESOLVED" }));
 
       renderPage("/tickets?status=RESOLVED");
 
@@ -182,7 +220,7 @@ describe("TicketsPage", () => {
   });
 
   it("shows each ticket's reference, subject, requester, category and when it arrived", async () => {
-    vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+    serve(TICKETS);
 
     renderPage();
 
@@ -198,7 +236,7 @@ describe("TicketsPage", () => {
   });
 
   it("labels every status and category in words, not as stored values", async () => {
-    vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+    serve(TICKETS);
 
     renderPage();
 
@@ -212,9 +250,7 @@ describe("TicketsPage", () => {
   });
 
   it("shows a dash rather than crashing on a date it cannot read", async () => {
-    vi.mocked(api.get).mockResolvedValue({
-      data: makeTickets({ subject: "Odd timestamp", createdAt: "not a date" }),
-    });
+    serve(makeTickets({ subject: "Odd timestamp", createdAt: "not a date" }));
 
     renderPage();
 
@@ -237,7 +273,7 @@ describe("TicketsPage", () => {
   });
 
   it("replaces the skeleton with the rows once they arrive", async () => {
-    vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+    serve(TICKETS);
 
     const { container } = renderPage();
 
@@ -247,7 +283,7 @@ describe("TicketsPage", () => {
   });
 
   it("says so when there are no tickets, instead of drawing an empty table", async () => {
-    vi.mocked(api.get).mockResolvedValue({ data: [] });
+    serve([]);
 
     const { container } = renderPage();
 
@@ -270,8 +306,8 @@ describe("TicketsPage", () => {
   });
 
   describe("opening a ticket", () => {
-    it("links each subject to that ticket's page", async () => {
-      vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+    it("links each subject to that ticket, carrying the list's query string", async () => {
+      serve(TICKETS);
 
       renderPage();
 
@@ -284,7 +320,7 @@ describe("TicketsPage", () => {
 
     it("opens the ticket when its row is clicked", async () => {
       const user = userEvent.setup();
-      vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+      serve(TICKETS);
 
       renderPage();
       await waitFor(() => expect(rows()).toHaveLength(3));
@@ -294,16 +330,17 @@ describe("TicketsPage", () => {
       expect(await screen.findByRole("heading", { name: "Detail for /tickets/t1" })).toBeInTheDocument();
     });
 
-    it("hands the current filters to the ticket page, so it can link back to them", async () => {
+    it("keeps the current filters in the ticket's URL, and marks it as opened from the list", async () => {
       const user = userEvent.setup();
-      vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+      serve(TICKETS);
 
       renderPage("/tickets?status=OPEN");
 
       await user.click(await screen.findByRole("link", { name: "Refund for the spring course" }));
 
       await screen.findByRole("heading", { name: "Detail for /tickets/t1" });
-      expect(screen.getByTestId("detail-state")).toHaveTextContent('{"listSearch":"?status=OPEN"}');
+      expect(screen.getByTestId("location-search")).toHaveTextContent("?status=OPEN");
+      expect(screen.getByTestId("detail-state")).toHaveTextContent('{"fromList":true}');
     });
   });
 
@@ -314,7 +351,7 @@ describe("TicketsPage", () => {
     const search = () => screen.getByTestId("location-search").textContent;
 
     it("offers every status and category, with All chosen for both by default", async () => {
-      vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+      serve(TICKETS);
 
       renderPage();
 
@@ -331,7 +368,7 @@ describe("TicketsPage", () => {
     });
 
     it("asks for every ticket when no filter is chosen", async () => {
-      vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+      serve(TICKETS);
 
       renderPage();
 
@@ -342,7 +379,7 @@ describe("TicketsPage", () => {
 
     it("asks the API for the chosen status and records it in the URL", async () => {
       const user = userEvent.setup();
-      vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+      serve(TICKETS);
 
       renderPage();
       await waitFor(() => expect(rows()).toHaveLength(3));
@@ -357,7 +394,7 @@ describe("TicketsPage", () => {
 
     it("combines a status and a category", async () => {
       const user = userEvent.setup();
-      vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+      serve(TICKETS);
 
       renderPage();
       await waitFor(() => expect(rows()).toHaveLength(3));
@@ -372,7 +409,7 @@ describe("TicketsPage", () => {
     });
 
     it("starts from the filters in the URL", async () => {
-      vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+      serve(TICKETS);
 
       renderPage("/tickets?status=CLOSED&category=TECHNICAL_QUESTION");
 
@@ -388,7 +425,7 @@ describe("TicketsPage", () => {
     });
 
     it("treats an unknown value in the URL as no filter, rather than failing the request", async () => {
-      vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+      serve(TICKETS);
 
       renderPage("/tickets?status=bogus");
 
@@ -402,7 +439,7 @@ describe("TicketsPage", () => {
       ["the chosen status again", "Open"],
     ])("goes back to every ticket when %s is clicked", async (_label, button) => {
       const user = userEvent.setup();
-      vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+      serve(TICKETS);
 
       renderPage("/tickets?status=OPEN");
       await waitFor(() => expect(rows()).toHaveLength(1));
@@ -416,11 +453,7 @@ describe("TicketsPage", () => {
 
     it("says nothing matches, and offers to clear the filters, when a filter finds no tickets", async () => {
       const user = userEvent.setup();
-      // Filtered requests find nothing; the unfiltered one finds everything.
-      vi.mocked(api.get).mockImplementation(async (_url, config) => {
-        const filtered = (config?.params as { status?: string } | undefined)?.status;
-        return { data: filtered ? [] : TICKETS } as never;
-      });
+      serve((params) => (params.status ? [] : TICKETS));
 
       renderPage("/tickets?status=CLOSED&category=REFUND_REQUEST");
 
@@ -437,7 +470,7 @@ describe("TicketsPage", () => {
     it("keeps the current rows on screen, marked busy, while a new filter loads", async () => {
       const user = userEvent.setup();
       vi.mocked(api.get)
-        .mockResolvedValueOnce({ data: TICKETS })
+        .mockResolvedValueOnce({ data: { groups: groupsFrom(TICKETS) } })
         .mockReturnValueOnce(new Promise(() => {}));
 
       const { container } = renderPage();
@@ -446,8 +479,8 @@ describe("TicketsPage", () => {
       await user.click(within(statusGroup()).getByRole("button", { name: "Closed" }));
 
       await waitFor(() => expect(lastParams()).toEqual({ status: "CLOSED" }));
-      expect(rowIds()).toEqual(["t3"]);
-      expect(screen.getByRole("table").closest("[aria-busy]")).toHaveAttribute("aria-busy", "true");
+      expect(rowIds()).toEqual(["t1", "t2", "t3"]);
+      expect(screen.getAllByRole("table")[0].closest("[aria-busy]")).toHaveAttribute("aria-busy", "true");
       expect(skeletons(container)).toHaveLength(0);
     });
   });
@@ -460,7 +493,7 @@ describe("TicketsPage", () => {
 
     it("applies the search once typing pauses, not on every keystroke", async () => {
       const user = userEvent.setup();
-      vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+      serve(TICKETS);
 
       renderPage();
       await waitFor(() => expect(rows()).toHaveLength(3));
@@ -474,7 +507,7 @@ describe("TicketsPage", () => {
 
     it("sends the search along with the filters", async () => {
       const user = userEvent.setup();
-      vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+      serve(TICKETS);
 
       renderPage("/tickets?status=OPEN");
       await waitFor(() => expect(rows()).toHaveLength(1));
@@ -486,7 +519,7 @@ describe("TicketsPage", () => {
     });
 
     it("starts from the search in the URL", async () => {
-      vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+      serve(TICKETS);
 
       renderPage("/tickets?q=sam");
 
@@ -504,7 +537,7 @@ describe("TicketsPage", () => {
       }],
     ])("clears the search with %s", async (_label, clear) => {
       const user = userEvent.setup();
-      vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+      serve(TICKETS);
 
       renderPage("/tickets?q=sam");
       await waitFor(() => expect(rows()).toHaveLength(3));
@@ -518,10 +551,7 @@ describe("TicketsPage", () => {
 
     it("says nothing matches a search, and Clear filters empties the search box too", async () => {
       const user = userEvent.setup();
-      vi.mocked(api.get).mockImplementation(async (_url, config) => {
-        const q = (config?.params as { q?: string } | undefined)?.q;
-        return { data: q ? [] : TICKETS } as never;
-      });
+      serve((params) => (params.q ? [] : TICKETS));
 
       renderPage("/tickets?q=nothing-like-this");
 
@@ -544,7 +574,7 @@ describe("TicketsPage", () => {
     const search = () => screen.getByTestId("location-search").textContent;
 
     it("starts newest first, marked on Received, with Status left out of the columns", async () => {
-      vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+      serve(TICKETS);
 
       renderPage();
       await waitFor(() => expect(rows()).toHaveLength(3));
@@ -565,7 +595,7 @@ describe("TicketsPage", () => {
 
     it("asks the server to sort by subject A–Z, then Z–A on a second click", async () => {
       const user = userEvent.setup();
-      vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+      serve(TICKETS);
 
       renderPage();
       await waitFor(() => expect(rows()).toHaveLength(3));
@@ -585,7 +615,7 @@ describe("TicketsPage", () => {
 
     it("never drops back to no sort: a third click flips the direction again", async () => {
       const user = userEvent.setup();
-      vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+      serve(TICKETS);
 
       renderPage();
       await waitFor(() => expect(rows()).toHaveLength(3));
@@ -600,7 +630,7 @@ describe("TicketsPage", () => {
 
     it("sorts received oldest first, and back to newest first without any parameters", async () => {
       const user = userEvent.setup();
-      vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+      serve(TICKETS);
 
       renderPage();
       await waitFor(() => expect(rows()).toHaveLength(3));
@@ -617,7 +647,7 @@ describe("TicketsPage", () => {
 
     it("sorts category A–Z first", async () => {
       const user = userEvent.setup();
-      vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+      serve(TICKETS);
 
       renderPage();
       await waitFor(() => expect(rows()).toHaveLength(3));
@@ -633,10 +663,7 @@ describe("TicketsPage", () => {
         { subject: "Zebra crossing permit", status: "OPEN" },
         { subject: "Apple Pay declined", status: "OPEN" },
       );
-      vi.mocked(api.get).mockImplementation(async (_url, config) => {
-        const sort = (config?.params as { sort?: string } | undefined)?.sort;
-        return { data: sort === "subject" ? [apple, zebra] : [zebra, apple] } as never;
-      });
+      serve((params) => (params.sort === "subject" ? [apple, zebra] : [zebra, apple]));
 
       renderPage();
       await waitFor(() => expect(rowIds(section("Open"))).toEqual(["t1", "t2"]));
@@ -647,7 +674,7 @@ describe("TicketsPage", () => {
     });
 
     it("starts from the sort in the URL", async () => {
-      vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+      serve(TICKETS);
 
       renderPage("/tickets?sort=category&dir=desc");
       await waitFor(() => expect(rows()).toHaveLength(3));
@@ -658,7 +685,7 @@ describe("TicketsPage", () => {
     });
 
     it("treats an unknown sort in the URL as the default", async () => {
-      vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+      serve(TICKETS);
 
       renderPage("/tickets?sort=bogus&dir=sideways");
       await waitFor(() => expect(rows()).toHaveLength(3));
@@ -669,7 +696,7 @@ describe("TicketsPage", () => {
 
     it("keeps the filters and search when the sort changes", async () => {
       const user = userEvent.setup();
-      vi.mocked(api.get).mockResolvedValue({ data: TICKETS });
+      serve(TICKETS);
 
       renderPage("/tickets?status=OPEN&q=sam");
       await waitFor(() => expect(rows()).toHaveLength(1));
@@ -684,10 +711,7 @@ describe("TicketsPage", () => {
 
     it("keeps the sort when filters are cleared", async () => {
       const user = userEvent.setup();
-      vi.mocked(api.get).mockImplementation(async (_url, config) => {
-        const q = (config?.params as { q?: string } | undefined)?.q;
-        return { data: q ? [] : TICKETS } as never;
-      });
+      serve((params) => (params.q ? [] : TICKETS));
 
       renderPage("/tickets?q=nothing&sort=subject&dir=desc");
 
@@ -696,6 +720,126 @@ describe("TicketsPage", () => {
       await waitFor(() => expect(rows()).toHaveLength(3));
       expect(search()).toBe("?sort=subject&dir=desc");
       expect(header("Ticket")).toHaveAttribute("aria-sort", "descending");
+    });
+  });
+
+  describe("paging each status section", () => {
+    const many = (count: number, status: TicketStatus, prefix: string) =>
+      Array.from({ length: count }, (_, index) =>
+        makeTicket({ id: `${prefix}${index + 1}`, subject: `${prefix} ${index + 1}`, status }),
+      );
+    const QUEUE = [...many(23, "OPEN", "open"), ...many(12, "RESOLVED", "resolved"), ...many(4, "CLOSED", "closed")];
+
+    const pages = (label: string) => screen.getByRole("navigation", { name: `${label} tickets pages` });
+    const next = (label: string) =>
+      within(pages(label)).getByRole("button", { name: `Next page of ${label.toLowerCase()} tickets` });
+    const previous = (label: string) =>
+      within(pages(label)).getByRole("button", { name: `Previous page of ${label.toLowerCase()} tickets` });
+    const lastParams = () => vi.mocked(api.get).mock.lastCall?.[1]?.params;
+    const search = () => screen.getByTestId("location-search").textContent;
+
+    it("shows one page per section, headed by the section's full count", async () => {
+      serve(QUEUE);
+
+      renderPage();
+
+      await waitFor(() => expect(rows()).toHaveLength(10 + 10 + 4));
+      expect(rowIds(section("Open"))).toHaveLength(10);
+      expect(screen.getByRole("button", { name: "Open, 23 tickets" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Resolved, 12 tickets" })).toBeInTheDocument();
+      expect(within(pages("Open")).getByText("1–10 of 23")).toBeInTheDocument();
+      expect(within(pages("Open")).getByText("Page 1 of 3")).toBeInTheDocument();
+      expect(previous("Open")).toBeDisabled();
+      expect(next("Open")).toBeEnabled();
+    });
+
+    it("offers no page controls to a section that fits on one page", async () => {
+      serve(QUEUE);
+
+      renderPage();
+      await waitFor(() => expect(rows()).toHaveLength(24));
+
+      expect(within(section("Closed")).getAllByTestId("ticket-row")).toHaveLength(4);
+      expect(within(section("Closed")).queryByRole("navigation")).not.toBeInTheDocument();
+    });
+
+    it("pages one section without moving the others", async () => {
+      const user = userEvent.setup();
+      serve(QUEUE);
+
+      renderPage();
+      await waitFor(() => expect(rows()).toHaveLength(24));
+
+      await user.click(next("Open"));
+
+      await waitFor(() => expect(rowIds(section("Open"))[0]).toBe("open11"));
+      expect(search()).toBe("?openPage=2");
+      expect(lastParams()).toEqual({ openPage: 2 });
+      expect(rowIds(section("Resolved"))[0]).toBe("resolved1");
+      expect(within(pages("Open")).getByText("11–20 of 23")).toBeInTheDocument();
+      expect(previous("Open")).toBeEnabled();
+    });
+
+    it("stops at the last page, and steps back to the first without a page parameter", async () => {
+      const user = userEvent.setup();
+      serve(QUEUE);
+
+      renderPage("/tickets?resolvedPage=2");
+      await waitFor(() => expect(within(pages("Resolved")).getByText("11–12 of 12")).toBeInTheDocument());
+
+      expect(rowIds(section("Resolved"))).toEqual(["resolved11", "resolved12"]);
+      expect(next("Resolved")).toBeDisabled();
+
+      await user.click(previous("Resolved"));
+
+      await waitFor(() => expect(search()).toBe(""));
+      expect(rowIds(section("Resolved"))[0]).toBe("resolved1");
+    });
+
+    it("shows the page the server settled on when the URL asks for one past the end", async () => {
+      serve(QUEUE);
+
+      renderPage("/tickets?openPage=99");
+
+      await waitFor(() => expect(within(pages("Open")).getByText("Page 3 of 3")).toBeInTheDocument());
+      expect(rowIds(section("Open"))).toEqual(["open21", "open22", "open23"]);
+    });
+
+    it.each([
+      ["sorting", "sort=subject", async (user: ReturnType<typeof userEvent.setup>) =>
+        user.click(within(section("Open")).getByRole("columnheader", { name: "Ticket" }).querySelector("button")!)],
+      ["a status filter", "status=OPEN", async (user: ReturnType<typeof userEvent.setup>) =>
+        user.click(within(screen.getByRole("group", { name: "Status" })).getByRole("button", { name: "Open" }))],
+      ["a category filter", "category=REFUND_REQUEST", async (user: ReturnType<typeof userEvent.setup>) =>
+        user.click(within(screen.getByRole("group", { name: "Category" })).getByRole("button", { name: "Refund request" }))],
+      ["a search", "q=open", async (user: ReturnType<typeof userEvent.setup>) =>
+        user.type(screen.getByRole("searchbox", { name: "Search tickets" }), "open")],
+    ])("sends every section back to its first page on %s", async (_label, applied, change) => {
+      const user = userEvent.setup();
+      serve(QUEUE);
+
+      renderPage("/tickets?openPage=3&resolvedPage=2");
+      await waitFor(() => expect(within(pages("Open")).getByText("Page 3 of 3")).toBeInTheDocument());
+      expect(search()).toContain("openPage=3");
+
+      await change(user);
+
+      await waitFor(() => expect(search()).toContain(applied));
+      expect(search()).not.toMatch(/openPage|resolvedPage/);
+      expect(lastParams()).not.toHaveProperty("openPage", 3);
+      expect(lastParams()).not.toHaveProperty("resolvedPage", 2);
+    });
+
+    it("clears every section's page along with the filters", async () => {
+      const user = userEvent.setup();
+      serve((params) => (params.q ? [] : QUEUE));
+
+      renderPage("/tickets?q=nothing&openPage=2&closedPage=1");
+
+      await user.click(await screen.findByRole("button", { name: "Clear filters" }));
+
+      await waitFor(() => expect(search()).toBe(""));
+      expect(rowIds(section("Open"))[0]).toBe("open1");
     });
   });
 });

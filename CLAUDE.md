@@ -135,9 +135,9 @@ The client proxies `/api/*` requests to the server via Vite config (target is co
 
 ## Tickets (list, filters, detail)
 
-- **Routes**: `/tickets` (`client/src/pages/TicketsPage.tsx`) and `/tickets/:id`
-  (`TicketDetailPage.tsx`), for every signed-in user — agents manage tickets, so both sit under
-  `ProtectedRoute` only, not `AdminRoute`. The navbar's "Tickets" link is shown to everyone;
+- **Routes**: `/tickets` (`client/src/pages/TicketsPage.tsx`) and `/tickets/:id`, nested inside it
+  and rendered through `TicketsPage`'s `<Outlet />` as `TicketDetailSheet` — for every signed-in
+  user; agents manage tickets, so both sit under `ProtectedRoute` only, not `AdminRoute`. The navbar's "Tickets" link is shown to everyone;
   "Users" stays admin-only.
 - **List endpoint**: `GET /api/tickets` answers the list shape — `TICKET_LIST_SELECT`
   (`server/src/lib/ticket-select.ts`), mirrored by `ticketListItemSchema` / `TicketListItem` in
@@ -145,17 +145,22 @@ The client proxies `/api/*` requests to the server via Vite config (target is co
   `body`** (an emailed body runs to 50,000 characters) and no `messageId`. Keep each server select
   and its core schema in step, the same way `USER_LIST_SELECT` mirrors `userListItemSchema`.
 - **The table is TanStack Table v9 (`@tanstack/react-table`), in manual mode — the server sorts and
-  filters.** `TicketsPage` builds it with `useTable` (v9: `tableFeatures`, not `useReactTable` /
-  `getCoreRowModel`); features and columns live in `components/tickets/ticket-columns.tsx`
-  (`rowSortingFeature`, `columnFilteringFeature`, `globalFilteringFeature`,
-  `columnVisibilityFeature`, typed `tableMeta`/`columnMeta`). **The URL is the only state**: sorting,
-  column filters (`status`, `category`) and the global filter (`q`) are derived from
-  `useSearchParams` on every render (`lib/ticket-table-state.ts`), and every `on*Change` maps the
-  updated state straight back into the URL. Filter chips and search call
-  `column.setFilterValue` / `table.setGlobalFilter`, never the URL directly — except "Clear filters",
-  which writes the URL once because two `setSearchParams` calls in one tick overwrite each other.
-  `status` is a hidden column (`HIDDEN_TICKET_COLUMNS`) that exists only to hold the status filter.
-  No sorted or filtered row models are registered, so rows always render in server order.
+  filters and pages.** `TicketsTable` owns the instances (v9 `useTable` with `tableFeatures`, not
+  `useReactTable` / `getCoreRowModel`): a rowless **toolbar** table that holds the column filters and
+  global filter the search box and chips drive, and **one table per status section** holding that
+  section's page, sorting and `rowCount` (the server's total). Features and columns live in
+  `components/tickets/ticket-columns.tsx` (`rowSortingFeature`, `columnFilteringFeature`,
+  `globalFilteringFeature`, `columnVisibilityFeature`, `rowPaginationFeature`, typed
+  `tableMeta`/`columnMeta`). `TicketsPage` only reads the URL into a `TicketListQuery`, fetches with
+  `useTicketGroups`, and passes `groups`, `query`, `onQueryChange` and `isUpdating` down — with its loading, error and empty states as `children`, rendered under the
+  toolbar. **The URL is the only state**: sorting, column filters (`status`, `category`) and the
+  global filter (`q`) are derived from `query` on every render (`lib/ticket-table-state.ts`), and
+  every `on*Change` hands a `TicketQueryPatch` back to the page, which writes it to the URL. Filter
+  chips and search call `column.setFilterValue` / `table.setGlobalFilter`, never the URL directly —
+  except "Clear filters", which the page writes to the URL once, because two `setSearchParams` calls
+  in one tick overwrite each other. `status` is a hidden column (`HIDDEN_TICKET_COLUMNS`) that exists
+  only to hold the status filter. No sorted or filtered row models are registered, so rows always
+  render in server order.
 - **Sorting is server-side**: `?sort=createdAt|subject|category&dir=asc|desc`, ordered by
   `ticketListOrderBy` (`server/src/lib/ticket-order.ts`, unit-tested) with `createdAt desc, id desc`
   breaking ties. A column's first direction (dates newest first, text A–Z) is
@@ -177,15 +182,24 @@ The client proxies `/api/*` requests to the server via Vite config (target is co
   filters", Back — replaces the draft. `TicketFilters.tsx` is two shadcn ToggleGroups (Base UI) — chosen
   over a Select because Base UI popups are a Vitest hazard (see Component Tests). Base UI emits `[]`
   when the pressed item is clicked again; that and "All" both mean no filter. Each filter
-  combination (and each sort) is its own query (`["tickets", "list", query]`) with `keepPreviousData`, so the old
+  combination (and each sort and page) is its own query (`["tickets", "groups", query]`) with `keepPreviousData`, so the old
   rows stay on screen, dimmed and `aria-busy`, while a new filter loads. A filter that matches
   nothing shows "No tickets match these filters" with "Clear filters" (which clears the search too,
   and keeps the sort), distinct from "No tickets yet".
-- **The list is grouped by status**: `TicketsTable` renders a `<section aria-label="Open tickets"
-  data-testid="ticket-group">` per status in `TICKET_STATUS_LABEL` order (Open, Resolved, Closed),
-  each headed by a collapse button named like "Open, 3 tickets" (disabled at 0) and holding its own
-  table. Rows keep the server's order within a section; a `?status=` filter shows only
-  that section. The tables are `table-fixed` with fixed side-column widths so sections line up — keep
+- **The list is grouped by status and paged per section, on the server**: the page reads
+  `GET /api/tickets/by-status` → `{ groups: [{ status, total, page, pageSize, tickets }] }`, one group
+  per status in `TICKET_STATUS_ORDER` (only the filtered one under `?status=`), each a page of
+  `TICKET_GROUP_PAGE_SIZE` (10) under the same filters, search and sort. The route is registered
+  before `/:id`. Each section's page is its own URL parameter (`TICKET_GROUP_PAGE_PARAM`: `openPage`,
+  `resolvedPage`, `closedPage`; page 1 is written as none), and a page past the end is clamped to the
+  last one (`groupPage` in `server/src/lib/ticket-groups.ts`) — render `group.page`, not the URL's.
+  **Anything that changes the matching set or its order — sort, a filter, the search, "Clear
+  filters" — resets every section to page 1** (`FIRST_PAGES` in `lib/ticket-filters.ts`). The flat
+  `GET /api/tickets` still returns every match as an array; the page no longer uses it. Each section is
+  a `<section aria-label="Open tickets" data-testid="ticket-group">` headed by a collapse button named
+  like "Open, 23 tickets" — the server's total, not the page length (disabled at 0) — with
+  `<nav aria-label="Open tickets pages">` ("1–10 of 23", "Page 1 of 3", "Previous/Next page of open
+  tickets") under its rows only when it has more than one page. The tables are `table-fixed` with fixed side-column widths so sections line up — keep
   widths in the column's `meta.className` if you add one. Columns: Ref (sm+), Ticket, Category (lg+),
   Received (md+); the header row is hidden below `sm`, where only Ticket remains.
 - **References**: `ticketReference(id)` (`lib/ticket-reference.ts`) is `#` plus the id's last six
@@ -195,10 +209,16 @@ The client proxies `/api/*` requests to the server via Vite config (target is co
   — the list shape plus `body` and `updatedAt`, still no `messageId` — or 404. `useTicket(id)`
   caches under `["tickets", "detail", id]`, so invalidating `ticketsQueryKey` refreshes lists and
   open tickets alike. `queryClient` does not retry a 404 (nor 401/403).
-- **Detail page**: a 404 shows "Ticket not found"; any other failure is an `ErrorAlert`. The body is
-  plain text rendered with `whitespace-pre-wrap break-words` — never as HTML. "All tickets" returns
-  to the list's filters: each row's link passes `state={{ listSearch }}`, and the page only trusts a
-  string starting with `?` (router state survives a reload and could hold anything).
+- **Detail is a right-side sheet over the list, not a page** (`components/tickets/TicketDetailSheet.tsx`,
+  shadcn `Sheet` on Base UI Dialog). The list stays mounted behind it, and the list's query string
+  rides along in the URL (`/tickets/<id>?status=OPEN&sort=subject&dir=asc`) — row links pass
+  `{ pathname, search }` from `table.options.meta.listSearch`. The dialog is named by its
+  `SheetTitle`: the subject, or "Loading ticket" / "Ticket not found" / "Couldn't load this ticket" —
+  every state must render a `SheetTitle`. The body is plain text in `whitespace-pre-wrap
+  break-words`, never HTML. **Closing** waits for the exit animation (`onOpenChangeComplete`), then:
+  opened from a row (`state={{ fromList: true }}`, checked with `=== true`) → `navigate(-1)`, so Back
+  doesn't reopen it; opened from a link or reload → `navigate({ pathname: "/tickets", search },
+  { replace: true })`. Don't navigate in `onOpenChange` — it skips the slide-out.
 - **Rows open on click anywhere**: the subject is the row's one `<Link>`, and its `::after` is
   stretched over the `relative` row. Don't add a row `onClick` or a second link — this keeps one
   named link per row for keyboard and screen-reader users.
@@ -209,9 +229,8 @@ The client proxies `/api/*` requests to the server via Vite config (target is co
   chip inline. All are full `Record`s, so a new status or category fails the typecheck until it has
   a label and colours.
   Dates go through `formatDateTime` (`lib/format-date.ts`) inside a `<time dateTime>`.
-- **Not built yet**: pagination (the list returns every matching ticket, so every section's count is
-  a full count), a sort control on phones (headers are hidden below `sm`), changing status or
-  assigning from the detail page, and replies.
+- **Not built yet**: a page-size choice, a sort control on phones (headers are hidden below `sm`),
+  changing status or assigning from the detail page, and replies.
 
 ## Ticket Lifecycle (planned — not built)
 
@@ -381,20 +400,22 @@ than none. This has caught two vacuous tests here — both looked correct on rev
 empty, error, and the disabled or in-flight variants. Those branches are where the bugs are
 and they are cheap to reach with a mock.
 
-**Existing suites** (217 tests): `LoginPage` (inputs, validation, submit, redirects),
+**Existing suites** (223 tests): `LoginPage` (inputs, validation, submit, redirects),
 `UserRow`, `UsersPage`, `ErrorAlert`, `ProtectedRoute` (covers `AdminRoute`), `Navbar`,
 `UsersTable`, `CreateUserSheet`, `EditUserSheet`, `DeleteUserDialog`, `use-users`,
 `lib/reorder`, `TicketsPage` (covers `TicketsTable`, `TicketFilters`, `TicketSearch` and
-`use-tickets`, and TanStack sorting/filtering end to end with a mocked API), `TicketDetailPage`,
+`use-tickets`, and TanStack sorting/filtering end to end with a mocked API), `TicketDetailSheet`,
 `lib/ticket-filters`, `lib/ticket-table-state`, `lib/ticket-reference`, `lib/query-client` (the
 retry policy). Ticket rows carry
 `data-testid="ticket-row"` and `data-ticket-id`; `makeTicket` / `makeTickets` / `makeTicketDetail`
 in `@/test/fixtures` build ticket data the same way `makeUser` does.
 
-**Pages that read the URL need a real router in tests.** `TicketsPage` and `TicketDetailPage` render
+**Pages that read the URL need a real router in tests.** `TicketsPage` and `TicketDetailSheet` render
 inside `MemoryRouter` with real `Routes`; to assert what a page wrote to the URL, or where a link
 went, mount a small probe component on the route that renders `useLocation()` (see
-`TicketsPage.test.tsx`), rather than mocking `useSearchParams` or `useNavigate`.
+`TicketsPage.test.tsx`), rather than mocking `useSearchParams` or `useNavigate`. Mount
+`TicketDetailSheet` under a parent `/tickets` route with an `<Outlet />`, as the app does; to tell a
+history step back from a replace, render `useNavigationType()` in the probe (`POP` vs `REPLACE`).
 
 **Base UI's ToggleGroup is safe under jsdom** (unlike its Menu): `userEvent.click` toggles it, and
 buttons are queryable by `getByRole("button", { name, pressed })` inside
@@ -418,13 +439,19 @@ renders placeholders until it is wired to data.
   mount above `express.json()`, Message-ID de-duplication). The harness passes `INBOUND_EMAIL_SECRET`
   from `e2e/test-env.ts`. `e2e/tests/tickets-list.spec.ts` covers the navbar route to `/tickets` and
   emailed tickets showing newest first; `tickets-filters.spec.ts` the server-side status/category
-  narrowing, reload persistence and the 400; `tickets-detail.spec.ts` opening a row by clicking
-  anywhere on it, the return to the filtered list, the 404 page and the detail JSON shape;
+  narrowing, reload persistence and the 400; `tickets-detail.spec.ts` opening the sheet by clicking
+  anywhere on a row, closing back to the filtered list (and Back not reopening it), deep links, the
+  404 sheet and the detail JSON shape;
   `tickets-search.spec.ts` subject/email/reference search on real Postgres and its 400;
-  `tickets-sort.spec.ts` server-side sorting by subject and received, reload persistence, category
+  `tickets-sort.spec.ts` server-side sorting by subject and received (searched down to its own
+  tagged tickets), reload persistence, category
   enum order and the 400s. **A server that ignored `?status=` would look identical in the browser**
   — sections group rows by status on the client — so status filtering is proved through the API
   response, not the page. Specs create tickets through `createTicketByApi` in `e2e/helpers.ts`.
+- **A status section shows only its first 10 tickets.** The database is not reset between specs,
+  so a spec that looks for its own rows in the browser must narrow the list to them — load
+  `/tickets?q=<tag>` with a per-run tag (see `tickets-sort.spec.ts`) — or they will be pushed onto a
+  later page by tickets other specs left behind. API-level assertions can filter the response instead.
 - **The `request` fixture inherits `test.use({ storageState })`**, not just `page` — a request made
   inside a signed-in describe carries the session cookie. A "no session" API test must live outside
   any `storageState` block (see the top-level describe in `auth-api.spec.ts`).

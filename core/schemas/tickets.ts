@@ -31,6 +31,8 @@ export type TicketDetail = z.infer<typeof ticketDetailSchema>;
  * A value that isn't a known status or category is a 400, not silently ignored, because a
  * list that looks unfiltered when the caller asked for a filter would mislead them.
  */
+const pageNumber = z.coerce.number().int().min(1).max(100_000).optional();
+
 export const ticketListQuerySchema = z.object({
   status: z.enum(TicketStatus).optional(),
   category: z.enum(TicketCategory).optional(),
@@ -39,9 +41,27 @@ export const ticketListQuerySchema = z.object({
   sort: z.enum(TicketSortField).optional(),
   /** Without it, the sort field's natural first direction: newest first for dates, A–Z otherwise. */
   dir: z.enum(SortDirection).optional(),
+  /** GET /api/tickets/by-status only: each status section's page, from 1. */
+  openPage: pageNumber,
+  resolvedPage: pageNumber,
+  closedPage: pageNumber,
 });
 
 export type TicketListQuery = z.infer<typeof ticketListQuerySchema>;
+
+/** One status section of GET /api/tickets/by-status: a page of its tickets, and how many match in all. */
+export const ticketGroupSchema = z.object({
+  status: z.enum(TicketStatus),
+  total: z.number().int().min(0),
+  page: z.number().int().min(1),
+  pageSize: z.number().int().min(1),
+  tickets: z.array(ticketListItemSchema),
+});
+
+export const ticketGroupsSchema = z.object({ groups: z.array(ticketGroupSchema) });
+
+export type TicketGroup = z.infer<typeof ticketGroupSchema>;
+export type TicketGroups = z.infer<typeof ticketGroupsSchema>;
 
 export const createTicketSchema = z.object({
   subject: z.string().trim().min(1).max(200),
