@@ -39,7 +39,7 @@ ticketsRouter.get("/by-status", async (req, res) => {
       const where = ticketListWhere({ ...query, status });
       const total = await prisma.ticket.count({ where });
       const { page, skip, take } = groupPage(query, status, total);
-      const tickets = await prisma.ticket.findMany({ where, select: TICKET_LIST_SELECT, orderBy, skip, take });
+      const tickets = await prisma.ticket.findMany({ where, select: TICKET_LIST_SELECT, orderBy, skip: 0, take });
 
       return { status, total, page, pageSize: take, tickets };
     }),
