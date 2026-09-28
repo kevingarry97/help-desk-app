@@ -1,4 +1,4 @@
-import type { TicketCategory, TicketStatus } from "core/constants/ticket";
+import type { TicketAssigneeFilter, TicketCategory, TicketStatus } from "core/constants/ticket";
 
 export const TICKET_STATUS_LABEL: Record<TicketStatus, string> = {
   OPEN: "Open",
@@ -7,7 +7,12 @@ export const TICKET_STATUS_LABEL: Record<TicketStatus, string> = {
 };
 
 export const TICKET_CATEGORY_LABEL: Record<TicketCategory, string> = {
-  GENERAL_QUESTION: "General question",
-  TECHNICAL_QUESTION: "Technical question",
-  REFUND_REQUEST: "Refund request",
+  GENERAL_QUESTION: "General Question",
+  TECHNICAL_QUESTION: "Technical Question",
+  REFUND_REQUEST: "Refund Request",
+};
+
+export const TICKET_ASSIGNEE_FILTER_LABEL: Record<TicketAssigneeFilter, string> = {
+  me: "Assigned to me",
+  none: "Unassigned",
 };

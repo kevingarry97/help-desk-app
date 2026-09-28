@@ -31,7 +31,7 @@ export const ticketTableFeatures = tableFeatures({
 
 export type TicketTableFeatures = typeof ticketTableFeatures;
 
-export const HIDDEN_TICKET_COLUMNS: ColumnVisibilityState = { status: false };
+export const HIDDEN_TICKET_COLUMNS: ColumnVisibilityState = { status: false, assignee: false };
 
 const column = createColumnHelper<TicketTableFeatures, TicketListItem>();
 
@@ -87,5 +87,11 @@ export const ticketColumns = column.columns([
   column.accessor("status", {
     header: "Status",
     enableSorting: false,
+  }),
+  // Not on the row — the list shape has no assignee. It exists only to hold the filter the
+  // chips set, the same way `status` does, and is hidden with it.
+  column.display({
+    id: "assignee",
+    header: "Assignee",
   }),
 ]);

@@ -256,9 +256,12 @@ export default function TicketsTable({ groups, query, onQueryChange, isUpdating,
   const { search } = useLocation();
   const [collapsed, setCollapsed] = useState<ReadonlySet<TicketStatus>>(new Set());
 
-  const { status, category, q, sort, dir } = query;
+  const { status, category, assignee, q, sort, dir } = query;
   const sorting = useMemo(() => sortingFromQuery({ sort, dir }), [sort, dir]);
-  const columnFilters = useMemo(() => columnFiltersFromQuery({ status, category }), [status, category]);
+  const columnFilters = useMemo(
+    () => columnFiltersFromQuery({ status, category, assignee }),
+    [status, category, assignee],
+  );
   const globalFilter = q ?? "";
 
   const setSorting = (next: SortingState) => onQueryChange({ ...queryFromSorting(next), ...FIRST_PAGES });
@@ -293,8 +296,10 @@ export default function TicketsTable({ groups, query, onQueryChange, isUpdating,
         <TicketFilters
           status={status}
           category={category}
+          assignee={assignee}
           onStatusChange={(next) => toolbar.getColumn("status")?.setFilterValue(next)}
           onCategoryChange={(next) => toolbar.getColumn("category")?.setFilterValue(next)}
+          onAssigneeChange={(next) => toolbar.getColumn("assignee")?.setFilterValue(next)}
         />
       </div>
 

@@ -22,3 +22,8 @@ export function isRecordNotFound(error: unknown): boolean {
 export function isUniqueViolation(error: unknown): boolean {
   return prismaCode(error) === "P2002";
 }
+
+/** Prisma's foreign key violation — assigning a ticket to a user deleted mid-request. */
+export function isForeignKeyViolation(error: unknown): boolean {
+  return prismaCode(error) === "P2003";
+}

@@ -60,7 +60,7 @@ function NoMatches({ onClear }: { onClear: () => void }) {
     <div className="rounded-xl bg-card px-6 py-16 text-center ring-1 ring-foreground/10">
       <SearchX className="mx-auto size-8 text-muted-foreground/50" />
       <p className="mt-3 text-sm font-medium text-foreground">No tickets match these filters</p>
-      <p className="mt-1 text-sm text-muted-foreground">Try another search, status or category.</p>
+      <p className="mt-1 text-sm text-muted-foreground">Try another search, status, category or assignee.</p>
       <Button variant="outline" size="sm" className="mt-4" onClick={onClear}>
         Clear filters
       </Button>

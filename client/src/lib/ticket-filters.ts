@@ -10,7 +10,7 @@ export const FIRST_PAGES: TicketQueryPatch = Object.fromEntries(
 );
 
 export function filtersFromSearchParams(params: URLSearchParams): TicketListQuery {
-  const { status, category, q, sort, dir, openPage, resolvedPage, closedPage } =
+  const { status, category, q, sort, dir, assignee, openPage, resolvedPage, closedPage } =
     ticketListQuerySchema.shape;
 
   return {
@@ -19,6 +19,7 @@ export function filtersFromSearchParams(params: URLSearchParams): TicketListQuer
     q: q.safeParse(params.get("q") ?? undefined).data || undefined,
     sort: sort.safeParse(params.get("sort") ?? undefined).data,
     dir: dir.safeParse(params.get("dir") ?? undefined).data,
+    assignee: assignee.safeParse(params.get("assignee") ?? undefined).data,
     openPage: openPage.safeParse(params.get("openPage") ?? undefined).data,
     resolvedPage: resolvedPage.safeParse(params.get("resolvedPage") ?? undefined).data,
     closedPage: closedPage.safeParse(params.get("closedPage") ?? undefined).data,
@@ -46,9 +47,20 @@ export function withParams(params: URLSearchParams, patch: TicketQueryPatch): UR
 }
 
 export function hasFilters(filters: TicketListQuery): boolean {
-  return filters.status !== undefined || filters.category !== undefined || !!filters.q;
+  return (
+    filters.status !== undefined ||
+    filters.category !== undefined ||
+    filters.assignee !== undefined ||
+    !!filters.q
+  );
 }
 
 export function withoutFilters(params: URLSearchParams): URLSearchParams {
-  return withParams(params, { status: undefined, category: undefined, q: undefined, ...FIRST_PAGES });
+  return withParams(params, {
+    status: undefined,
+    category: undefined,
+    assignee: undefined,
+    q: undefined,
+    ...FIRST_PAGES,
+  });
 }

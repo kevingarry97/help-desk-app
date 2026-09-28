@@ -4,8 +4,14 @@ import { FileQuestion } from "lucide-react";
 import { cn } from "cn";
 
 import ErrorAlert from "@/components/ErrorAlert";
+import TicketAssignee from "@/components/tickets/TicketAssignee";
+import TicketConversation from "@/components/tickets/TicketConversation";
+import TicketTriageForm from "@/components/tickets/TicketTriageForm";
 import TicketCategoryTag from "@/components/tickets/TicketCategoryTag";
 import TicketStatusBadge from "@/components/tickets/TicketStatusBadge";
+import { Button } from "@/components/ui/button";
+import { Role } from "core/constants/role";
+import { useSession } from "@/lib/auth-client";
 import { useTicket } from "@/hooks/use-tickets";
 import { formatDateTime } from "@/lib/format-date";
 import { ticketReference } from "@/lib/ticket-reference";
@@ -77,7 +83,12 @@ export default function TicketDetailSheet() {
   const { search, state } = useLocation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(true);
-  const messageHeadingId = useId();
+  const conversationHeadingId = useId();
+  const assigneeHeadingId = useId();
+  const triageHeadingId = useId();
+  const [editing, setEditing] = useState(false);
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.role === Role.Admin;
 
   const { data: ticket, isPending, isError, error } = useTicket(id);
   const notFound = isError && statusOf(error) === 404;
@@ -148,9 +159,6 @@ export default function TicketDetailSheet() {
                     {ticket.requesterEmail}
                   </a>
                 </Meta>
-                <Meta label="Category">
-                  <TicketCategoryTag category={ticket.category} />
-                </Meta>
                 <Meta label="Received">
                   <time dateTime={ticket.createdAt}>{formatDateTime(ticket.createdAt)}</time>
                 </Meta>
@@ -159,17 +167,38 @@ export default function TicketDetailSheet() {
                 </Meta>
               </dl>
 
-              <section aria-labelledby={messageHeadingId}>
-                <h3
-                  id={messageHeadingId}
-                  className="text-[0.6875rem] font-semibold tracking-wider text-muted-foreground uppercase"
-                >
-                  Message
-                </h3>
-                <p className="mt-2 rounded-lg bg-muted/50 p-4 text-sm leading-relaxed break-words whitespace-pre-wrap text-foreground">
-                  {ticket.body}
-                </p>
+              <section aria-labelledby={triageHeadingId}>
+                <div className="flex items-center justify-between gap-3">
+                  <h3
+                    id={triageHeadingId}
+                    className="text-[0.6875rem] font-semibold tracking-wider text-muted-foreground uppercase"
+                  >
+                    Status &amp; category
+                  </h3>
+                  {isAdmin && !editing && (
+                    <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+                      Edit
+                    </Button>
+                  )}
+                </div>
+
+                {editing ? (
+                  <TicketTriageForm ticket={ticket} onDone={() => setEditing(false)} />
+                ) : (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <TicketStatusBadge status={ticket.status} />
+                    <TicketCategoryTag category={ticket.category} />
+                  </div>
+                )}
               </section>
+
+              <TicketAssignee
+                ticketId={ticket.id}
+                assignee={ticket.assignee}
+                headingId={assigneeHeadingId}
+              />
+
+              <TicketConversation ticket={ticket} headingId={conversationHeadingId} />
             </div>
           </>
         )}

@@ -229,8 +229,97 @@ The client proxies `/api/*` requests to the server via Vite config (target is co
   chip inline. All are full `Record`s, so a new status or category fails the typecheck until it has
   a label and colours.
   Dates go through `formatDateTime` (`lib/format-date.ts`) inside a `<time dateTime>`.
+- **Assignment**: `Ticket.assigneeId` → `User`, `onDelete: SetNull`, so deleting a user unassigns
+  their tickets rather than deleting the work. Only the detail sheet shows it — there is no
+  assignee column, and `TICKET_LIST_SELECT` / `ticketListItemSchema` are deliberately unchanged, so
+  the list stays join-free.
+  - **`PATCH /api/tickets/:id/assignee`** — body `assignTicketSchema` (`{ assigneeId: string | null }`,
+    `null` unassigns), answers `TICKET_DETAIL_SELECT`. `requireRole(Role.Admin)` is mounted on **this
+    route alone**, so agents can still change status but not routing. An unknown assignee is a 409
+    (checked up front, and again on the foreign key if the user is deleted mid-request); an unknown
+    ticket is a 404 — two codes so a 404 here means the ticket and nothing else.
+  - **`TICKET_DETAIL_SELECT`** embeds `assignee: { id, name, email, image }`, mirrored by
+    `ticketAssigneeSchema` in `core/schemas/tickets.ts`. Agents read the name off the ticket, so
+    only admins ever call the admin-only `GET /api/users`.
+  - **`components/tickets/TicketAssignee.tsx`** branches on `useSession()`: agents get a read-only
+    line, admins get the picker. The picker is a **separate component** — the `useUsers()` call has
+    to sit behind the role check, not beside it, or every agent opening a ticket fires a 403.
+  - The picker is a shadcn **Select** (Base UI), `combobox` named "Assignee", saving on change.
+    **jsdom cannot open a Base UI Select** — `userEvent.click` on the trigger never reaches the
+    listbox, `fireEvent.click` opens it but choosing an option never fires `onValueChange`, and a
+    keyboard attempt took 78s. So component tests cover only what renders (the trigger's current
+    value, the read-only line, the error states); **choosing a person is proved in E2E**, in a real
+    browser. Don't add a component test that opens a Select — it will time out, slowly.
+- **Assignee filter**: `?assignee=me|none` (`TicketAssigneeFilter` in `core/constants/ticket.ts`),
+  resolved server-side by `ticketListWhere(query, viewerId)` — `me` → the signed-in user, `none` →
+  `assigneeId: null`. Anything else is a 400, like an unknown status. On the client it is a third
+  `FilterGroup` chip row and a **filter-only hidden column** (`column.display({ id: "assignee" })` in
+  `HIDDEN_TICKET_COLUMNS`), so the chips still go through `column.setFilterValue` rather than the URL.
+- **Editing (status and category)**: a "Status & category" section in the detail sheet. Admins get
+  an **Edit** button that swaps the badges for `TicketTriageForm.tsx` — two Selects, Cancel, and a
+  Save disabled until dirty (react-hook-form + `zodResolver(ticketTriageSchema)`, the house pattern
+  from `EditUserSheet`). Agents see the badges only.
+  - **`PATCH /api/tickets/:id`** is now `requireRole(Role.Admin)` — agents read tickets but change
+    nothing. `updateTicketSchema` is **partial** (`{ status?, category? }` with a refine demanding
+    at least one): moving a ticket's status must not oblige the caller to resend its category.
+    `createTicketByApi` in `e2e/helpers.ts` depends on that — it PATCHes `{ status }` alone.
+  - `ticketTriageSchema` (both fields required) is what the form validates; `updateTicketSchema` is
+    what the API takes. Both are built from one `ticketTriageFields` object, so they cannot drift.
+- **Labels are Title Case**: "General Question", "Technical Question", "Refund Request" — statuses
+  were already ("Open", "Resolved", "Closed"). `TICKET_CATEGORY_LABEL` is the only place to change
+  them; specs and component tests assert on these strings.
 - **Not built yet**: a page-size choice, a sort control on phones (headers are hidden below `sm`),
-  changing status or assigning from the detail page, and replies.
+  and editing the subject or body.
+
+## Ticket Replies
+
+- **The detail sheet's old "Message" section is gone**, replaced by a **Conversation** section
+  (`components/tickets/TicketConversation.tsx`): the requester's original email is entry one —
+  rendered from `Ticket.body`, which is unchanged and un-migrated — then every reply in
+  `createdAt asc`, then the composer. Bodies stay plain text in `whitespace-pre-wrap break-words`,
+  never HTML. Query it with `getByRole("region", { name: "Conversation" })`; entries are `<li>`.
+- **`TicketReply`** (`server/prisma/schema.prisma`, migration `20260921130000_add_ticket_replies`):
+  `{ id, ticketId, authorId?, authorName, body, isInternal, createdAt }`. `ticketId` is
+  `onDelete: Cascade` (a deleted ticket takes its thread with it); `authorId` is `onDelete: SetNull`
+  like `Ticket.assignee`, so deleting a user never deletes what they wrote. **`authorName` is
+  snapshotted at write time** — the thread still says who answered after that account is gone, and
+  the UI reads `reply.author?.name ?? reply.authorName`.
+- **No email is sent.** No mail provider is chosen yet, so a reply is stored and shown only.
+  `isInternal` is the flag that decides which replies a Phase 6 outbound adapter may send: an
+  internal note never leaves the helpdesk. Both roles see every reply — "internal" means "not
+  mailed to the requester", not "hidden from agents".
+- **`POST /api/tickets/:id/replies`** — body `createReplySchema`
+  (`{ body: 1–10,000 trimmed, isInternal, resolve? }`), answers **201** with `TICKET_DETAIL_SELECT`.
+  - **Deliberately carries no `requireRole`**, unlike `PATCH /:id` and `PATCH /:id/assignee`:
+    answering a requester is the agent's job. The author is taken from `req.user`, never the body,
+    so a caller cannot sign a reply as someone else.
+  - **`resolve: true` moves the ticket to `RESOLVED` in the same transaction** as the insert — a
+    ticket must never end up resolved with no reply explaining why. This is the one status change
+    an agent can make; arbitrary triage stays admin-only.
+  - An unknown ticket is a 404, checked up front and again on the foreign key if it is deleted
+    mid-request. A blank or whitespace-only body is a 400 ("Write a reply first").
+- **The thread rides on the detail payload**, not its own endpoint: `TICKET_REPLY_SELECT` nested in
+  `TICKET_DETAIL_SELECT` (`server/src/lib/ticket-select.ts`), mirrored by `ticketReplySchema` in
+  `ticketDetailSchema`. One round trip fills the sheet, and every mutation answering that shape
+  leaves the cached thread correct. **Unpaged** — if threads ever run long, split it out to
+  `GET /:id/replies` with its own query key rather than paging inside the detail.
+  `TICKET_LIST_SELECT` is untouched, so the list stays join-free.
+- **`useAddReply(id)`** (`hooks/use-tickets.ts`) shares the `onSuccess` of the other ticket
+  mutations. The invalidate matters more here: "Reply & resolve" changes the status, so the list
+  sections behind the sheet have to regroup the row.
+- **`TicketReplyForm.tsx`** is react-hook-form + `zodResolver(replyFormSchema)`. `replyFormSchema`
+  and `createReplySchema` are both built from one `replyFields` object, the `ticketTriageFields`
+  precedent, so form and API cannot drift — `resolve` is not a form field, it is chosen by which
+  button was pressed. Reply kind is a **ToggleGroup, not a Select**, because Base UI's Select
+  cannot be driven under jsdom and its ToggleGroup can; choosing "Internal note" relabels the
+  buttons to "Add note" / "Note & resolve". "Reply & resolve" is hidden on an already-resolved
+  ticket.
+- **Internal notes use existing tokens only** — `border-dashed` on `bg-muted` plus a secondary
+  `Badge`. No new colour, so none of the contrast obligations above are triggered. A tint would
+  need a full `--note-{,-foreground,-accent}` set in both `:root` and `.dark`, with the numbers
+  checked.
+- **Not built yet**: editing or deleting a reply, threading an emailed reply onto its ticket
+  (every inbound email is still a new ticket), and AI-suggested drafts.
 
 ## Ticket Lifecycle (planned — not built)
 
@@ -301,7 +390,12 @@ is only `OPEN | RESOLVED | CLOSED`. When it is built, emailed tickets move to be
 - **`bun run db:seed:demo:tickets`** (in `server/`) fills the dev database with 32 realistic tickets
   across every status and category, spread over five weeks. Re-runnable (keyed by a
   `demo-ticket-N@demo.helpdesk.local` Message-ID); remove them with
-  `bun prisma/seed-demo-tickets.ts --clear`. Refuses to run with `NODE_ENV=production`.
+  `bun prisma/seed-demo-tickets.ts --clear`. Refuses to run with `NODE_ENV=production`. Two in every
+  three are assigned round-robin across whatever users exist, so the assignee filter has something
+  to show; an empty directory just leaves them all unassigned. Three of them carry a reply thread
+  (one an internal note), keyed by a derived `demo-reply-N-M` id so a re-run updates rather than
+  doubles it, and spaced between the ticket's arrival and now so nothing is dated in the future.
+  `--clear` needs no change: replies cascade with their ticket.
 
 ## Authentication
 
@@ -357,6 +451,10 @@ browser and a real server are the point.
   `LoginPage` renders), which crashes without them; `PointerEvent` is for Base UI's Radio,
   which re-dispatches a click as one and would otherwise throw before the radio ever
   checks.
+- **Base UI's Select cannot be opened under jsdom.** `userEvent.click` on the trigger does
+  nothing, `fireEvent.click` opens it but picking an option never fires `onValueChange`, and a
+  keyboard attempt burned 78s before failing. Assert what renders (the trigger's text, the
+  surrounding states) and leave choosing a value to E2E.
 - **Base UI's Menu (shadcn `dropdown-menu`) hangs Vitest under jsdom.** Once the menu opens,
   something spins synchronously, so no test timeout fires and the run never ends
   (`modal={false}` doesn't help). `userEvent.click` doesn't open it at all. That is why the
@@ -400,15 +498,21 @@ than none. This has caught two vacuous tests here — both looked correct on rev
 empty, error, and the disabled or in-flight variants. Those branches are where the bugs are
 and they are cheap to reach with a mock.
 
-**Existing suites** (223 tests): `LoginPage` (inputs, validation, submit, redirects),
+**Existing suites** (257 tests): `LoginPage` (inputs, validation, submit, redirects),
 `UserRow`, `UsersPage`, `ErrorAlert`, `ProtectedRoute` (covers `AdminRoute`), `Navbar`,
 `UsersTable`, `CreateUserSheet`, `EditUserSheet`, `DeleteUserDialog`, `use-users`,
 `lib/reorder`, `TicketsPage` (covers `TicketsTable`, `TicketFilters`, `TicketSearch` and
 `use-tickets`, and TanStack sorting/filtering end to end with a mocked API), `TicketDetailSheet`,
+`TicketConversation` (covers `TicketReplyForm` and `use-tickets`' reply mutation),
 `lib/ticket-filters`, `lib/ticket-table-state`, `lib/ticket-reference`, `lib/query-client` (the
-retry policy). Ticket rows carry
-`data-testid="ticket-row"` and `data-ticket-id`; `makeTicket` / `makeTickets` / `makeTicketDetail`
-in `@/test/fixtures` build ticket data the same way `makeUser` does.
+retry policy). `TicketDetailSheet` also covers assignment and triage editing — it mocks `@/lib/auth-client` to
+drive the agent/admin split, and its axios factory exposes `patch` and `post` as well as `get`. It does **not**
+open either Select; see the note under Assignment for why. `TicketConversation` needs no router —
+it takes the ticket as a prop — and drives the reply kind through the ToggleGroup, which jsdom
+handles. Ticket rows carry
+`data-testid="ticket-row"` and `data-ticket-id`; `makeTicket` / `makeTickets` / `makeTicketDetail` /
+`makeTicketReply` / `makeTicketReplies` in `@/test/fixtures` build ticket data the same way
+`makeUser` does.
 
 **Pages that read the URL need a real router in tests.** `TicketsPage` and `TicketDetailSheet` render
 inside `MemoryRouter` with real `Routes`; to assert what a page wrote to the URL, or where a link

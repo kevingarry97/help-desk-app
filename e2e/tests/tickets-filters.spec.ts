@@ -89,7 +89,7 @@ test.describe("filtering the ticket list, signed in as an agent", () => {
     // Only the server filters by category: the browser has no category grouping to fall
     // back on, so the technical question can only leave if the WHERE clause removed it.
     await ticketFilter(page, "Category")
-      .getByRole("button", { name: "Refund request", exact: true })
+      .getByRole("button", { name: "Refund Request", exact: true })
       .click();
 
     await expect
@@ -110,7 +110,7 @@ test.describe("filtering the ticket list, signed in as an agent", () => {
       exact: true,
     });
     const refund = ticketFilter(page, "Category").getByRole("button", {
-      name: "Refund request",
+      name: "Refund Request",
       exact: true,
     });
 
@@ -129,7 +129,7 @@ test.describe("filtering the ticket list, signed in as an agent", () => {
       "aria-pressed",
       "true",
     );
-    await expect(refund, "Refund request is still chosen after the reload").toHaveAttribute(
+    await expect(refund, "Refund Request is still chosen after the reload").toHaveAttribute(
       "aria-pressed",
       "true",
     );

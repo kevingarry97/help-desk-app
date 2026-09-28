@@ -1,4 +1,9 @@
-import type { TicketDetail, TicketListItem } from "core/schemas/tickets";
+import type {
+  TicketAssignee,
+  TicketDetail,
+  TicketListItem,
+  TicketReply,
+} from "core/schemas/tickets";
 import type { UserListItem } from "core/schemas/users";
 
 /**
@@ -64,12 +69,48 @@ export function makeTickets(...tickets: Partial<TicketListItem>[]): TicketListIt
   return tickets.map((overrides, index) => makeTicket({ id: `t${index + 1}`, ...overrides }));
 }
 
-/** A ticket as GET /api/tickets/:id returns it: the list fields plus body and updatedAt. */
+/** A ticket as GET /api/tickets/:id returns it: the list fields plus body, updatedAt and the thread. */
 export function makeTicketDetail(overrides: Partial<TicketDetail> = {}): TicketDetail {
   return {
     ...makeTicket(),
     body: "I reset my password twice and still can't get in.",
     updatedAt: "2026-09-16T10:15:00.000Z",
+    assignee: null,
+    replies: [],
     ...overrides,
   };
+}
+
+/** Who a ticket is assigned to, as the detail route embeds them. */
+export function makeTicketAssignee(overrides: Partial<TicketAssignee> = {}): TicketAssignee {
+  return {
+    id: "u1",
+    name: "Grace Hopper",
+    email: "grace@example.com",
+    image: null,
+    ...overrides,
+  };
+}
+
+let replySequence = 0;
+
+/** One entry of a ticket's thread. `author: null` is a reply whose author has been deleted. */
+export function makeTicketReply(overrides: Partial<TicketReply> = {}): TicketReply {
+  replySequence += 1;
+  return {
+    id: `r${replySequence}`,
+    body: "Thanks for getting in touch — try the reset link one more time.",
+    isInternal: false,
+    createdAt: "2026-09-16T11:00:00.000Z",
+    authorName: "Grace Hopper",
+    author: makeTicketAssignee(),
+    ...overrides,
+  };
+}
+
+/** A thread in the order given, with `id` assigned by position (`r1`, `r2`, …). */
+export function makeTicketReplies(...replies: Partial<TicketReply>[]): TicketReply[] {
+  return replies.map((overrides, index) =>
+    makeTicketReply({ id: `r${index + 1}`, ...overrides }),
+  );
 }

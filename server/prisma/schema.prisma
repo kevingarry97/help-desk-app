@@ -24,6 +24,8 @@ model User {
   updatedAt     DateTime  @updatedAt
   sessions      Session[]
   accounts      Account[]
+  assignedTickets Ticket[] @relation("AssignedTickets")
+  ticketReplies   TicketReply[] @relation("TicketReplies")
 
   // Admin-controlled display order for /users. A sequence, not a constant default: a user
   // created after an admin has arranged the list has to land at the *end* of it, and with
@@ -119,6 +121,34 @@ model Ticket {
 
   messageId      String?        @unique
 
+  // SetNull, not Cascade: deleting a user unassigns their tickets rather than deleting the work.
+  assigneeId     String?
+  assignee       User?          @relation("AssignedTickets", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  replies        TicketReply[]
+
   @@index([status])
   @@index([category])
+  @@index([assigneeId])
+}
+
+model TicketReply {
+  id         String   @id @default(cuid())
+  ticketId   String
+  ticket     Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  // SetNull like Ticket.assignee: deleting a user must not delete what they wrote. The name is
+  // snapshotted because a thread that has forgotten who answered is not a record of anything.
+  authorId   String?
+  author     User?    @relation("TicketReplies", fields: [authorId], references: [id], onDelete: SetNull)
+  authorName String
+
+  body       String
+  // Not sent to the requester. Nothing mails replies yet; this is the flag that decides which
+  // ones never will.
+  isInternal Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([ticketId, createdAt])
+  @@index([authorId])
 }

@@ -3,7 +3,7 @@ import { TicketCategory, TicketStatus } from "../generated/prisma/enums";
 
 /**
  * Fills the dev database with realistic tickets across every status and category, spread over
- * the last five weeks. Development only. Re-runnable: rows are keyed by a demo Message-ID, so a
+ * the last five weeks, some of them with a reply thread. Development only. Re-runnable: rows are keyed by a demo Message-ID, so a
  * second run updates them instead of duplicating. Remove with `bun prisma/seed-demo-tickets.ts --clear`.
  */
 
@@ -21,6 +21,26 @@ type DemoTicket = {
   status: TicketStatus;
   hoursAgo: number;
   body: string;
+};
+
+/** A thread for the ticket at this index, so the conversation view has something to show. */
+const DEMO_REPLIES: Record<number, { body: string; isInternal?: boolean }[]> = {
+  0: [
+    {
+      body: "Hi Marcus,\n\nThanks for flagging that — I can see both charges. I've refunded order #48214, which should land back on your card in 3–5 working days.\n\nBest,\nGrace",
+    },
+  ],
+  1: [
+    { body: "Safari's media engine again — same as last month's report. Worth a bug.", isInternal: true },
+    {
+      body: "Hi Lee,\n\nThanks for the detail. We've reproduced this on Safari 18 and a fix is going out this week. In the meantime Chrome or Firefox will play the full lesson.\n\nSorry for the trouble,\nAda",
+    },
+  ],
+  4: [
+    {
+      body: "Hello,\n\nYou're enrolled — the confirmation just bounced off your spam filter. I've resent it.\n\nAda",
+    },
+  ],
 };
 
 const DEMO_TICKETS: DemoTicket[] = [
@@ -297,6 +317,13 @@ if (process.argv.includes("--clear")) {
 } else {
   const now = Date.now();
 
+  // Round-robin over whoever exists, so the assignee filter has something to show. Independent of
+  // seed-demo-users.ts: an empty directory just leaves every ticket unassigned.
+  const owners = await prisma.user.findMany({
+    select: { id: true, name: true },
+    orderBy: { createdAt: "asc" },
+  });
+
   for (const [index, ticket] of DEMO_TICKETS.entries()) {
     const createdAt = new Date(now - ticket.hoursAgo * HOUR);
     const updatedAt =
@@ -309,13 +336,38 @@ if (process.argv.includes("--clear")) {
       status: ticket.status,
       createdAt,
       updatedAt,
+      assigneeId: index % 3 === 0 || owners.length === 0 ? null : owners[index % owners.length].id,
     };
 
-    await prisma.ticket.upsert({
+    const { id: ticketId } = await prisma.ticket.upsert({
       where: { messageId: messageIdFor(index) },
       update: data,
       create: { ...data, messageId: messageIdFor(index) },
+      select: { id: true },
     });
+
+    // Spread evenly between the ticket arriving and now, so no reply is dated in the future.
+    const thread = DEMO_REPLIES[index] ?? [];
+    const gap = (now - createdAt.getTime()) / (thread.length + 1);
+
+    // Ids are derived, not generated, so a second run updates the thread instead of doubling it.
+    for (const [nth, reply] of thread.entries()) {
+      const author = owners.length === 0 ? null : owners[(index + nth) % owners.length];
+      const replyData = {
+        ticketId,
+        body: reply.body,
+        isInternal: reply.isInternal ?? false,
+        authorId: author?.id ?? null,
+        authorName: author?.name ?? "Helpdesk",
+        createdAt: new Date(createdAt.getTime() + (nth + 1) * gap),
+      };
+
+      await prisma.ticketReply.upsert({
+        where: { id: `demo-reply-${index + 1}-${nth + 1}` },
+        update: replyData,
+        create: { ...replyData, id: `demo-reply-${index + 1}-${nth + 1}` },
+      });
+    }
   }
 
   const counts = Object.fromEntries(
@@ -325,8 +377,12 @@ if (process.argv.includes("--clear")) {
     ]),
   );
 
+  const assigned = owners.length === 0 ? 0 : DEMO_TICKETS.filter((_, index) => index % 3 !== 0).length;
+
+  const replies = Object.values(DEMO_REPLIES).reduce((total, thread) => total + thread.length, 0);
+
   console.log(
-    `Seeded ${DEMO_TICKETS.length} demo tickets — ${counts.OPEN} open, ${counts.RESOLVED} resolved, ${counts.CLOSED} closed`,
+    `Seeded ${DEMO_TICKETS.length} demo tickets — ${counts.OPEN} open, ${counts.RESOLVED} resolved, ${counts.CLOSED} closed, ${assigned} assigned, ${replies} replies`,
   );
 }
 

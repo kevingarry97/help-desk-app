@@ -229,7 +229,7 @@ describe("TicketsPage", () => {
 
     expect(row.getByText(ticketReference("t1"))).toBeInTheDocument();
     expect(row.getByText("sam@example.com")).toBeInTheDocument();
-    expect(row.getByText("Refund request")).toBeInTheDocument();
+    expect(row.getByText("Refund Request")).toBeInTheDocument();
 
     const received = row.getByText(formatDateTime("2026-09-16T15:45:00.000Z"));
     expect(received.closest("time")).toHaveAttribute("datetime", "2026-09-16T15:45:00.000Z");
@@ -243,9 +243,9 @@ describe("TicketsPage", () => {
     await waitFor(() => expect(rows()).toHaveLength(3));
 
     expect(within(section("Resolved")).getByText("Video lessons will not play")).toBeInTheDocument();
-    expect(within(rowFor("Video lessons will not play")).getByText("Technical question")).toBeInTheDocument();
+    expect(within(rowFor("Video lessons will not play")).getByText("Technical Question")).toBeInTheDocument();
     expect(within(section("Closed")).getByText("When does enrolment close?")).toBeInTheDocument();
-    expect(within(rowFor("When does enrolment close?")).getByText("General question")).toBeInTheDocument();
+    expect(within(rowFor("When does enrolment close?")).getByText("General Question")).toBeInTheDocument();
     expect(screen.queryByText(/TECHNICAL_QUESTION|RESOLVED/)).not.toBeInTheDocument();
   });
 
@@ -360,11 +360,54 @@ describe("TicketsPage", () => {
       for (const name of ["Open", "Resolved", "Closed"]) {
         expect(within(statusGroup()).getByRole("button", { name, pressed: false })).toBeInTheDocument();
       }
-      for (const name of ["General question", "Technical question", "Refund request"]) {
+      for (const name of ["General Question", "Technical Question", "Refund Request"]) {
         expect(within(categoryGroup()).getByRole("button", { name, pressed: false })).toBeInTheDocument();
       }
       expect(within(statusGroup()).getByRole("button", { name: "All", pressed: true })).toBeInTheDocument();
       expect(within(categoryGroup()).getByRole("button", { name: "All", pressed: true })).toBeInTheDocument();
+    });
+
+    it("asks the API for the chosen assignee and records it in the URL", async () => {
+      const user = userEvent.setup();
+      serve(TICKETS);
+
+      renderPage();
+      await waitFor(() => expect(rows()).toHaveLength(3));
+
+      const assigneeGroup = screen.getByRole("group", { name: "Assignee" });
+      await user.click(within(assigneeGroup).getByRole("button", { name: "Assigned to me" }));
+
+      await waitFor(() => expect(lastParams()).toEqual({ assignee: "me" }));
+      expect(search()).toBe("?assignee=me");
+    });
+
+    it("sends every section back to page 1 when the assignee filter changes", async () => {
+      const user = userEvent.setup();
+      serve(TICKETS);
+
+      renderPage("/tickets?openPage=3");
+      await waitFor(() => expect(rows()).toHaveLength(3));
+
+      const assigneeGroup = screen.getByRole("group", { name: "Assignee" });
+      await user.click(within(assigneeGroup).getByRole("button", { name: "Unassigned" }));
+
+      await waitFor(() => expect(lastParams()).toEqual({ assignee: "none" }));
+      expect(search()).toBe("?assignee=none");
+    });
+
+    it("clears the assignee filter along with the others", async () => {
+      const user = userEvent.setup();
+      serve((params) => (params.assignee ? [] : TICKETS));
+
+      renderPage("/tickets?assignee=me");
+
+      expect(await screen.findByText("No tickets match these filters")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Clear filters" }));
+
+      await waitFor(() => expect(rows()).toHaveLength(3));
+      expect(search()).toBe("");
+      expect(lastParams()).toEqual({});
     });
 
     it("asks for every ticket when no filter is chosen", async () => {
@@ -400,7 +443,7 @@ describe("TicketsPage", () => {
       await waitFor(() => expect(rows()).toHaveLength(3));
 
       await user.click(within(statusGroup()).getByRole("button", { name: "Open" }));
-      await user.click(within(categoryGroup()).getByRole("button", { name: "Refund request" }));
+      await user.click(within(categoryGroup()).getByRole("button", { name: "Refund Request" }));
 
       await waitFor(() =>
         expect(lastParams()).toEqual({ status: "OPEN", category: "REFUND_REQUEST" }),
@@ -420,7 +463,7 @@ describe("TicketsPage", () => {
       });
       expect(within(statusGroup()).getByRole("button", { name: "Closed", pressed: true })).toBeInTheDocument();
       expect(
-        within(categoryGroup()).getByRole("button", { name: "Technical question", pressed: true }),
+        within(categoryGroup()).getByRole("button", { name: "Technical Question", pressed: true }),
       ).toBeInTheDocument();
     });
 
@@ -811,7 +854,7 @@ describe("TicketsPage", () => {
       ["a status filter", "status=OPEN", async (user: ReturnType<typeof userEvent.setup>) =>
         user.click(within(screen.getByRole("group", { name: "Status" })).getByRole("button", { name: "Open" }))],
       ["a category filter", "category=REFUND_REQUEST", async (user: ReturnType<typeof userEvent.setup>) =>
-        user.click(within(screen.getByRole("group", { name: "Category" })).getByRole("button", { name: "Refund request" }))],
+        user.click(within(screen.getByRole("group", { name: "Category" })).getByRole("button", { name: "Refund Request" }))],
       ["a search", "q=open", async (user: ReturnType<typeof userEvent.setup>) =>
         user.type(screen.getByRole("searchbox", { name: "Search tickets" }), "open")],
     ])("sends every section back to its first page on %s", async (_label, applied, change) => {

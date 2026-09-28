@@ -1,9 +1,13 @@
 import { useId } from "react";
 import { cn } from "cn";
-import type { TicketCategory, TicketStatus } from "core/constants/ticket";
+import type { TicketAssigneeFilter, TicketCategory, TicketStatus } from "core/constants/ticket";
 
 import { CATEGORY_STYLE, STATUS_STYLE } from "@/components/tickets/ticket-style";
-import { TICKET_CATEGORY_LABEL, TICKET_STATUS_LABEL } from "@/lib/ticket-labels";
+import {
+  TICKET_ASSIGNEE_FILTER_LABEL,
+  TICKET_CATEGORY_LABEL,
+  TICKET_STATUS_LABEL,
+} from "@/lib/ticket-labels";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 const ALL = "all";
@@ -78,15 +82,19 @@ function FilterGroup<T extends string>({
 type Props = {
   status: TicketStatus | undefined;
   category: TicketCategory | undefined;
+  assignee: TicketAssigneeFilter | undefined;
   onStatusChange: (status: TicketStatus | undefined) => void;
   onCategoryChange: (category: TicketCategory | undefined) => void;
+  onAssigneeChange: (assignee: TicketAssigneeFilter | undefined) => void;
 };
 
 export default function TicketFilters({
   status,
   category,
+  assignee,
   onStatusChange,
   onCategoryChange,
+  onAssigneeChange,
 }: Props) {
   return (
     <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:gap-x-10">
@@ -109,6 +117,13 @@ export default function TicketFilters({
           mark: cn("size-2 rounded-[2px]", CATEGORY_STYLE[option].mark),
           pressed: CATEGORY_STYLE[option].pressed,
         })}
+      />
+      {/* No styleFor: assignment has no colour of its own, so these take the brand chip. */}
+      <FilterGroup
+        label="Assignee"
+        value={assignee}
+        labels={TICKET_ASSIGNEE_FILTER_LABEL}
+        onChange={onAssigneeChange}
       />
     </div>
   );

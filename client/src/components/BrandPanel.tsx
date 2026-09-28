@@ -103,7 +103,7 @@ function MockDashboard() {
         </p>
         <div className="mt-2 flex items-center justify-between">
           <span className="rounded bg-brand-50 px-1.5 py-0.5 text-[8px] font-semibold text-brand-700">
-            Refund request
+            Refund Request
           </span>
           <span className="text-[8px] font-medium text-muted-foreground">96%</span>
         </div>

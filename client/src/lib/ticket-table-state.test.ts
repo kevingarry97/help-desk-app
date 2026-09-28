@@ -55,17 +55,32 @@ describe("column filters", () => {
     ]);
   });
 
-  it("writes both filter keys back, undefined for the missing one", () => {
+  it("carries the assignee filter, which is not a column on the row", () => {
+    expect(columnFiltersFromQuery({ assignee: "me" })).toEqual([{ id: "assignee", value: "me" }]);
+  });
+
+  // Every key has to be present, even undefined: withParams only clears what it iterates over.
+  it("writes every filter key back, undefined for the missing ones", () => {
     const query = queryFromColumnFilters([{ id: "status", value: "OPEN" }]);
 
-    expect(query).toEqual({ status: "OPEN", category: undefined });
+    expect(query).toEqual({ status: "OPEN", category: undefined, assignee: undefined });
     expect(query).toHaveProperty("category", undefined);
+    expect(query).toHaveProperty("assignee", undefined);
+  });
+
+  it("round-trips the assignee filter", () => {
+    expect(queryFromColumnFilters([{ id: "assignee", value: "none" }]).assignee).toBe("none");
+  });
+
+  it("drops an assignee value that is not a real filter", () => {
+    expect(queryFromColumnFilters([{ id: "assignee", value: "all" }]).assignee).toBeUndefined();
   });
 
   it("drops a value that is not a real status or category", () => {
     expect(queryFromColumnFilters([{ id: "status", value: "all" }])).toEqual({
       status: undefined,
       category: undefined,
+      assignee: undefined,
     });
   });
 });

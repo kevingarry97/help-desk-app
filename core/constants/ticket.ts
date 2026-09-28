@@ -50,3 +50,11 @@ export const TICKET_SORT_FIRST_DIRECTION: Record<TicketSortField, SortDirection>
 };
 
 export const DEFAULT_TICKET_SORT_FIELD = TicketSortField.Received;
+
+export const TicketAssigneeFilter = {
+  Me: "me",
+  Unassigned: "none",
+} as const;
+
+export type TicketAssigneeFilter =
+  (typeof TicketAssigneeFilter)[keyof typeof TicketAssigneeFilter];

@@ -25,6 +25,15 @@ describe("filtersFromSearchParams", () => {
     expect(filtersFromSearchParams(new URLSearchParams({ q })).q).toBeUndefined();
   });
 
+  it("reads a known assignee filter", () => {
+    expect(filtersFromSearchParams(new URLSearchParams("assignee=me")).assignee).toBe("me");
+    expect(filtersFromSearchParams(new URLSearchParams("assignee=none")).assignee).toBe("none");
+  });
+
+  it.each(["bogus", "unassigned", ""])("ignores the unknown assignee %p", (assignee) => {
+    expect(filtersFromSearchParams(new URLSearchParams({ assignee })).assignee).toBeUndefined();
+  });
+
   it.each(["bogus", "open", ""])("ignores the unknown status %p but keeps a valid category", (status) => {
     const params = new URLSearchParams({ status, category: "TECHNICAL_QUESTION" });
 
@@ -60,9 +69,11 @@ describe("withFilter", () => {
 });
 
 describe("withoutFilters", () => {
-  it("removes the search and both filters, keeping anything else", () => {
+  it("removes the search and every filter, keeping anything else", () => {
     expect(
-      withoutFilters(new URLSearchParams("status=OPEN&category=REFUND_REQUEST&q=sam&page=2")).toString(),
+      withoutFilters(
+        new URLSearchParams("status=OPEN&category=REFUND_REQUEST&assignee=me&q=sam&page=2"),
+      ).toString(),
     ).toBe("page=2");
   });
 });
@@ -74,6 +85,8 @@ describe("hasFilters", () => {
     [{ status: "OPEN" as const }, true],
     [{ category: "REFUND_REQUEST" as const }, true],
     [{ q: "sam" }, true],
+    [{ assignee: "me" as const }, true],
+    [{ assignee: "none" as const }, true],
   ])("is %p → %p", (filters, expected) => {
     expect(hasFilters(filters)).toBe(expected);
   });

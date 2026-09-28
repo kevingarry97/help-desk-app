@@ -7,9 +7,14 @@ import {
 import { ticketListQuerySchema, type TicketListQuery } from "core/schemas/tickets";
 
 type SortQuery = Pick<TicketListQuery, "sort" | "dir">;
-type FilterQuery = Pick<TicketListQuery, "status" | "category">;
+type FilterQuery = Pick<TicketListQuery, "status" | "category" | "assignee">;
 
-const { sort: sortSchema, status: statusSchema, category: categorySchema } = ticketListQuerySchema.shape;
+const {
+  sort: sortSchema,
+  status: statusSchema,
+  category: categorySchema,
+  assignee: assigneeSchema,
+} = ticketListQuerySchema.shape;
 
 export function sortingFromQuery({ sort, dir }: TicketListQuery): SortingState {
   const id = sort ?? DEFAULT_TICKET_SORT_FIELD;
@@ -28,10 +33,15 @@ export function queryFromSorting(sorting: SortingState): SortQuery {
   return isDefault ? { sort: undefined, dir: undefined } : { sort, dir };
 }
 
-export function columnFiltersFromQuery({ status, category }: TicketListQuery): ColumnFiltersState {
+export function columnFiltersFromQuery({
+  status,
+  category,
+  assignee,
+}: TicketListQuery): ColumnFiltersState {
   return [
     ...(status ? [{ id: "status", value: status }] : []),
     ...(category ? [{ id: "category", value: category }] : []),
+    ...(assignee ? [{ id: "assignee", value: assignee }] : []),
   ];
 }
 
@@ -41,5 +51,6 @@ export function queryFromColumnFilters(filters: ColumnFiltersState): FilterQuery
   return {
     status: statusSchema.safeParse(valueOf("status")).data,
     category: categorySchema.safeParse(valueOf("category")).data,
+    assignee: assigneeSchema.safeParse(valueOf("assignee")).data,
   };
 }
